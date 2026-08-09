@@ -1,0 +1,793 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Panel SEUR · Leotec</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<style>
+  :root{
+    --ink:#1c2b33; --paper:#f6f4ee; --line:#d8d2c4; --seur:#f47b20; --dpd:#0a2540;
+    --ok:#2f7d5b; --bad:#b3432b; --muted:#7c7568; --card:#ffffff;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--paper);color:var(--ink);
+    font-family:'Segoe UI',ui-sans-serif,system-ui,sans-serif;font-size:14px;}
+  .wrap{max-width:1180px;margin:0 auto;padding:28px 20px 60px;}
+  header{display:flex;align-items:baseline;justify-content:space-between;
+    border-bottom:3px solid var(--dpd);padding-bottom:14px;margin-bottom:22px;flex-wrap:wrap;gap:8px;}
+  header h1{font-size:20px;margin:0;letter-spacing:.2px;}
+  header h1 span{color:var(--seur);}
+  header .sub{color:var(--muted);font-size:12.5px;}
+  .tabs{display:flex;gap:6px;margin-bottom:18px;}
+  .tab{padding:8px 16px;border:1px solid var(--line);background:var(--card);
+    border-radius:8px 8px 0 0;cursor:pointer;font-size:13px;color:var(--muted);border-bottom:none;}
+  .tab.active{color:var(--ink);font-weight:600;background:var(--paper);
+    box-shadow:0 -2px 0 var(--seur) inset;}
+  .panel{display:none;}
+  .panel.active{display:block;}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;
+    padding:18px 20px;margin-bottom:16px;}
+  .drop{border:2px dashed var(--line);border-radius:10px;padding:34px 20px;
+    text-align:center;color:var(--muted);cursor:pointer;transition:.15s;background:var(--card);}
+  .drop:hover, .drop.over{border-color:var(--seur);color:var(--ink);background:#fff8f2;}
+  .drop input{display:none;}
+  .drop .big{font-size:15px;color:var(--ink);margin-bottom:4px;}
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:14px 0;}
+  .kpi{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px 14px;}
+  .kpi .n{font-size:20px;font-weight:700;}
+  .kpi .l{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-top:2px;}
+  h3{font-size:13px;text-transform:uppercase;letter-spacing:.5px;color:var(--dpd);
+    border-bottom:1px solid var(--line);padding-bottom:6px;margin:22px 0 10px;}
+  table{width:100%;border-collapse:collapse;font-size:12.5px;}
+  th,td{padding:7px 9px;text-align:left;border-bottom:1px solid var(--line);}
+  th{color:var(--muted);font-weight:600;text-transform:uppercase;font-size:10.5px;letter-spacing:.3px;
+    cursor:pointer;user-select:none;white-space:nowrap;}
+  th:hover{color:var(--ink);}
+  tr.total td{font-weight:700;border-top:2px solid var(--dpd);}
+  .num{text-align:right;font-variant-numeric:tabular-nums;}
+  .pill{display:inline-block;padding:2px 8px;border-radius:20px;font-size:10.5px;font-weight:600;}
+  .pill.up{background:#fbe4dc;color:var(--bad);}
+  .pill.down{background:#dcf0e6;color:var(--ok);}
+  button{font-family:inherit;font-size:12.5px;border:1px solid var(--dpd);background:var(--dpd);
+    color:#fff;padding:8px 14px;border-radius:7px;cursor:pointer;}
+  button.ghost{background:transparent;color:var(--dpd);}
+  button.small{padding:5px 10px;font-size:11.5px;}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px;}
+  select,input[type=text]{font-family:inherit;font-size:12.5px;padding:7px 9px;border:1px solid var(--line);
+    border-radius:6px;background:#fff;}
+  textarea{width:100%;min-height:360px;font-family:'SF Mono',Consolas,monospace;font-size:12px;
+    border:1px solid var(--line);border-radius:8px;padding:14px;background:#fdfcf9;white-space:pre;}
+  .empty{color:var(--muted);text-align:center;padding:40px 10px;}
+  .badge-center{font-size:10.5px;padding:2px 8px;border-radius:5px;font-weight:700;letter-spacing:.3px;}
+  .badge-center.coslada{background:#e6efe0;color:#4a6b2f;}
+  .badge-center.hospitalet{background:#e3e9f5;color:#2c4a8c;}
+  .note{font-size:12px;color:var(--muted);margin-top:8px;}
+  .flex-between{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;}
+  #login-screen{max-width:380px;margin:80px auto;}
+  #login-screen input{width:100%;padding:10px 12px;margin-bottom:10px;border:1px solid var(--line);
+    border-radius:7px;font-size:13px;font-family:inherit;}
+  #login-screen button{width:100%;padding:10px;margin-top:4px;}
+  #login-error{color:var(--bad);font-size:12.5px;margin-top:8px;min-height:16px;}
+  #app{display:none;}
+  .userbar{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:10px;}
+</style>
+</head>
+<body>
+
+<div class="wrap" id="login-screen">
+  <header><h1>Panel <span>SEUR</span> · Leotec</h1></header>
+  <div class="card">
+    <h3 style="margin-top:0;">Iniciar sesión</h3>
+    <input type="email" id="login-email" placeholder="Email" autocomplete="username" />
+    <input type="password" id="login-pass" placeholder="Contraseña" autocomplete="current-password" />
+    <div class="row">
+      <button id="btn-login" style="flex:1">Entrar</button>
+      <button class="ghost" id="btn-signup" style="flex:1">Crear cuenta</button>
+    </div>
+    <div id="login-error"></div>
+    <div class="note">La primera vez, pulsa "Crear cuenta" con tu email y una contraseña. Supabase te enviará un correo de confirmación si lo tienes activado en el proyecto.</div>
+  </div>
+</div>
+
+<div class="wrap" id="app">
+  <header>
+    <h1>Panel <span>SEUR</span> · Leotec</h1>
+    <div class="userbar"><span id="user-email"></span><button class="ghost small" id="btn-logout">Salir</button></div>
+  </header>
+
+  <div class="tabs">
+    <div class="tab active" data-tab="subir">Subir factura</div>
+    <div class="tab" data-tab="informe">Informe del mes</div>
+    <div class="tab" data-tab="historial">Historial</div>
+    <div class="tab" data-tab="tarifas">Tarifas</div>
+  </div>
+
+  <div class="panel active" id="panel-subir">
+    <div class="card">
+      <label class="drop" id="drop">
+        <input type="file" id="file" accept=".xlsx" multiple />
+        <div class="big">Arrastra aquí la factura SEUR (.xlsx)</div>
+        <div>o haz clic para elegir el archivo — puedes soltar Coslada y Hospitalet a la vez</div>
+      </label>
+      <div class="note" id="status"></div>
+    </div>
+  </div>
+
+  <div class="panel" id="panel-informe">
+    <div id="informe-empty" class="empty card">Sube una factura para ver aquí el informe del mes.</div>
+    <div id="informe-content"></div>
+  </div>
+
+  <div class="panel" id="panel-historial">
+    <div class="card">
+      <div class="toolbar">
+        <select id="f-centro">
+          <option value="">Todos los centros</option>
+          <option value="coslada">Coslada</option>
+          <option value="hospitalet">Hospitalet</option>
+        </select>
+        <select id="f-anio">
+          <option value="">Todos los años</option>
+        </select>
+        <input type="text" id="f-texto" placeholder="Buscar mes..." />
+        <span style="flex:1"></span>
+        <button class="ghost small" id="btn-export">Exportar CSV</button>
+        <button class="ghost small" id="btn-export-json">Exportar JSON</button>
+        <label class="ghost small" style="border:1px solid var(--dpd);border-radius:7px;padding:5px 10px;cursor:pointer;">
+          Importar JSON<input type="file" id="import-json" accept=".json" style="display:none" />
+        </label>
+      </div>
+      <table id="tbl-historial">
+        <thead><tr>
+          <th data-k="centro">Centro</th><th data-k="mes">Mes</th><th data-k="anio">Año</th>
+          <th data-k="expediciones" class="num">Exp.</th><th data-k="bultos" class="num">Bultos</th>
+          <th data-k="peso" class="num">Peso (Kg)</th><th data-k="portes" class="num">Portes (€)</th>
+          <th data-k="combustible" class="num">Combustible (€)</th><th data-k="total" class="num">Total (€)</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+      <div id="hist-empty" class="empty" style="display:none;">Todavía no hay facturas guardadas en el historial.</div>
+    </div>
+  </div>
+
+  <div class="panel" id="panel-tarifas">
+    <div class="card">
+      <div class="flex-between">
+        <h3 style="border:none;margin:0;">Tarifa contratada (2024) vs. tarifa observada en factura</h3>
+        <button class="small" id="btn-verify-api">Verificar contra API SEUR (tarifa exacta)</button>
+      </div>
+      <div class="note">Se calcula a partir de todos los envíos guardados en el historial, clasificando cada uno por zona (módulo SEUR) y tramo de peso. Zona Coslada según confirmación del comercial SEUR (corto: Madrid, Ciudad Real, Toledo, Cuenca, Guadalajara, Valladolid, Salamanca, Zamora, Palencia, Soria, Burgos, Segovia · resto: medio). Zona Hospitalet según mapa de módulos con origen Barcelona.</div>
+      <div class="note" id="api-status"></div>
+      <table id="tbl-tarifas">
+        <thead><tr>
+          <th>Zona</th><th>Tramo</th><th class="num">Contrato 2024 (€)</th>
+          <th class="num">Nº envíos</th><th class="num">Media observada (€)</th><th class="num">Diferencia</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+      <div id="tarifas-empty" class="empty" style="display:none;">Sube al menos una factura para calcular la comparativa.</div>
+      <div id="api-resultado"></div>
+    </div>
+  </div>
+</div>
+</div><!-- /#app -->
+
+<script>
+// ---------- CONFIGURA AQUÍ TU PROYECTO SUPABASE ----------
+// Los encuentras en Supabase -> Project Settings -> API
+const SUPABASE_URL = "https://wdxaamhqndheewmvuusg.supabase.co/rest/v1/";
+const SUPABASE_ANON_KEY = "sb_publishable_DT8igQH3zavV_M4WW47P6w_Kl7mF48U";
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const COLS_CHARGE = ["Portes","Reexpedicion Especial","Gestion Reembolso","Seguro","Cargo Combustible",
+  "Comprobante de entrega","Servicios Sabados","Sobrecargos No Encintable","Tasa Seguridad Int",
+  "Tasa Calidad del Dato","Tasa Islas","Tasa B2C","Tasa Cliente No Integrado","Suplemento Andorra",
+  "Zonas Remotas","Gestion Aduanas Salidas","Gestion Aduanas Llegadas","Suplidos","Aforos","Descuentos","Otros"];
+
+const MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+
+const CONTRATO = {
+  "Medio España Peninsular": {1:3.90,3:4.51,5:5.10,10:6.26,15:7.50,20:9.48,25:11.60,30:13.82,40:18.05,50:21.93},
+  "Largo España Peninsular": {1:3.90,3:4.51,5:5.10,10:7.01,15:8.89,20:11.51,25:14.44,30:17.36,40:24.14,50:29.14},
+  "Area BCN": {1:3.50,3:4.06,5:4.58,10:5.64,15:6.75,20:8.53,25:10.44,30:12.44,40:16.24,50:19.74},
+  "Largo España Pen Portugal": {1:3.90,3:4.51,5:5.10,10:7.01,15:8.89,20:11.51,25:14.44,30:17.36,40:24.14,50:29.14},
+  "Medio Baleares": {1:5.89,3:7.62,5:8.92,10:13.97,15:17.64,20:22.17,25:27.28,30:32.73,40:40.45,50:47.04},
+  "Corto España Peninsular": {1:3.90,3:4.51,5:5.10,10:6.26,15:7.50,20:9.48,25:11.60,30:13.82,40:18.05,50:21.93},
+};
+const BRACKETS = [1,3,5,10,15,20,25,30,40,50];
+const BCN_CORTO = ["ANDORRA","GERONA","GIRONA","HUESCA","LERIDA","LLEIDA","TARRAGONA"];
+const BCN_LARGO = ["ASTURIAS","AVILA","BADAJOZ","CACERES","CADIZ","CIUDAD REAL","CORDOBA","GRANADA","HUELVA",
+  "JAEN","LA CORUÑA","A CORUÑA","LEON","LUGO","MALAGA","ORENSE","OURENSE","PONTEVEDRA","SEVILLA","TOLEDO","VALLADOLID"];
+const MAD_CORTO = ["MADRID","CIUDAD REAL","TOLEDO","CUENCA","GUADALAJARA","VALLADOLID","SALAMANCA","ZAMORA","PALENCIA","SORIA","BURGOS","SEGOVIA"];
+const BALEARES = ["BALEARES","PALMA","IBIZA","MENORCA","MALLORCA"];
+const PORTUGAL = ["PORTUGAL","LISBOA","PORTO","OPORTO"];
+
+// CCC (código de cuenta de cliente) de cada centro, según el contrato SEUR de Leotec
+const CCC_POR_CENTRO = { coslada: "92160-28", hospitalet: "51735-8" };
+// Código postal de origen de cada centro (para consultar tarifas por la API)
+const ORIGEN_POSTAL = { coslada: "28821", hospitalet: "08901" };
+
+function euro(x){ if(x==null||isNaN(x)) return "—";
+  return x.toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})+" €"; }
+function num(x,d=2){ if(x==null||isNaN(x)) return "—"; return x.toLocaleString('es-ES',{minimumFractionDigits:d,maximumFractionDigits:d}); }
+
+function pesoBracketLabel(kg){
+  if(kg<=1) return "Hasta 1 Kg";
+  if(kg<=3) return "De 1 a 3 Kg";
+  if(kg<=5) return "De 3 a 5 Kg";
+  if(kg<=10) return "De 5 a 10 Kg";
+  if(kg<=20) return "De 10 a 20 Kg";
+  return "Más de 20 Kg";
+}
+function tramoContrato(kg){
+  for(const b of BRACKETS) if(kg<=b) return b;
+  return 50;
+}
+function clasificaZona(pobDest, provDest, centro){
+  const p = (String(pobDest||"")+" "+String(provDest||"")).toUpperCase();
+  if(PORTUGAL.some(k=>p.includes(k))) return "Largo España Pen Portugal";
+  if(BALEARES.some(k=>p.includes(k))) return "Medio Baleares";
+  if(centro==="coslada"){
+    if(MAD_CORTO.some(k=>p.includes(k))) return "Corto España Peninsular";
+    return "Medio España Peninsular";
+  }
+  if(p.includes("BARCELONA")||p.includes("HOSPITALET")) return "Area BCN";
+  if(BCN_LARGO.some(k=>p.includes(k))) return "Largo España Peninsular";
+  if(BCN_CORTO.some(k=>p.includes(k))) return "Corto España Peninsular";
+  return "Medio España Peninsular";
+}
+function precioContrato(zona,kg){
+  const t = CONTRATO[zona]; const b = tramoContrato(kg);
+  if(kg<=50) return t[b];
+  const extra = {"Medio España Peninsular":0.38,"Largo España Peninsular":0.5,"Area BCN":0.34,
+    "Largo España Pen Portugal":0.5,"Medio Baleares":0.67,"Corto España Peninsular":0.38};
+  return t[50] + extra[zona]*(kg-50);
+}
+
+function parseWorkbook(file){
+  return new Promise((resolve,reject)=>{
+    const reader = new FileReader();
+    reader.onload = e => {
+      try{
+        const wb = XLSX.read(e.target.result, {type:'array', cellDates:true});
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, {defval:0});
+        resolve(rows);
+      }catch(err){ reject(err); }
+    };
+    reader.onerror = reject;
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+function agrupaExpediciones(rows){
+  const g = {};
+  for(const r of rows){
+    const id = r["Numero Expedicion"];
+    if(id===undefined) continue;
+    if(!g[id]){
+      g[id] = {
+        Remitente:r["Remitente"], Destinatario:r["Destinatario"],
+        PoblacionRemitente:r["Poblacion Remitente"], PoblacionDestinatario:r["Poblacion Destinatario"],
+        CPDestinatario:r["C. Postal Destinatario"],
+        Producto:r["Producto"], Bultos:0, Peso:0, PesoVol:0,
+      };
+      for(const c of COLS_CHARGE) g[id][c]=0;
+    }
+    g[id].Bultos += Number(r["Bultos"]||0);
+    g[id].Peso += Number(r["Peso"]||0);
+    g[id].PesoVol += Number(r["Peso Volumetrico"]||0);
+    for(const c of COLS_CHARGE) g[id][c] += Number(r[c]||0);
+  }
+  const list = Object.values(g);
+  for(const e of list){
+    e.PesoFacturable = Math.max(e.Peso, e.PesoVol);
+    e.RangoPeso = pesoBracketLabel(e.PesoFacturable);
+  }
+  return list;
+}
+
+function detectaCentro(list){
+  let h=0,c=0;
+  for(const e of list){
+    const p = String(e.PoblacionRemitente||"").toUpperCase();
+    if(p.includes("HOSPITALET")) h++;
+    if(p.includes("COSLADA")) c++;
+  }
+  return h>=c ? "hospitalet" : "coslada";
+}
+function clasificaHospitalet(e){
+  const rd = String(e.Remitente||"").toUpperCase().includes("DECATHLON");
+  const dd = String(e.Destinatario||"").toUpperCase().includes("DECATHLON");
+  if(dd && !rd) return "Envíos Leotec -> Decathlon";
+  if(rd && !dd) return "Recogidas Decathlon -> Leotec";
+  if(!dd && !rd){
+    if(String(e.PoblacionRemitente||"").toUpperCase().includes("HOSPITALET")) return "Envíos Leotec -> Otros";
+    return "Otras Recogidas (Otros -> Leotec)";
+  }
+  return "Sin clasificar";
+}
+function mesFactura(rows){
+  const f = rows.map(r=>r["Fecha Factura"]).find(v=>v);
+  const d = (f instanceof Date) ? f : new Date(f);
+  return {anio:d.getFullYear(), mes:d.getMonth()+1};
+}
+
+function topCentros(list, mask, key){
+  const sub = list.filter(mask);
+  const map = {};
+  for(const e of sub){
+    const k = e[key];
+    if(!map[k]) map[k]={n:0,kg:0,portes:0,comb:0};
+    map[k].n++; map[k].kg+=e.Peso; map[k].portes+=e.Portes; map[k].comb+=e["Cargo Combustible"];
+  }
+  const arr = Object.entries(map).map(([k,v])=>({centro:k,...v})).sort((a,b)=>b.n-a.n);
+  return {arr, total:sub.length, ncentros:arr.length};
+}
+
+function rangoPesoTabla(list){
+  const order = ["Hasta 1 Kg","De 1 a 3 Kg","De 3 a 5 Kg","De 5 a 10 Kg","De 10 a 20 Kg","Más de 20 Kg"];
+  return order.map(label=>{
+    const sub = list.filter(e=>e.RangoPeso===label);
+    if(!sub.length) return {label,n:0,media:null,modaVal:null,modaN:0};
+    const media = sub.reduce((s,e)=>s+e.Portes,0)/sub.length;
+    const counts={};
+    sub.forEach(e=>{const k=e.Portes.toFixed(2); counts[k]=(counts[k]||0)+1;});
+    let modaVal=null, modaN=0;
+    for(const k in counts) if(counts[k]>modaN){modaN=counts[k]; modaVal=parseFloat(k);}
+    return {label,n:sub.length,media,modaVal,modaN};
+  });
+}
+
+// ---------- STORAGE (Supabase) ----------
+async function guardaRegistro(reg){
+  const { data: { user } } = await sb.auth.getUser();
+  if(!user) throw new Error('No hay sesión activa');
+  const row = {
+    user_id: user.id, centro: reg.centro, anio: reg.anio, mes: reg.mes,
+    expediciones: reg.expediciones, bultos: reg.bultos, peso: reg.peso,
+    portes: reg.portes, combustible: reg.combustible, total: reg.total,
+    detalle: reg.detalle || null, email_borrador: reg.email_borrador || null,
+  };
+  // upsert: si ya existe una factura de ese centro/mes/año la actualiza en vez de duplicarla
+  const { error } = await sb.from('facturas').upsert(row, { onConflict: 'user_id,centro,anio,mes' });
+  if(error) throw error;
+}
+async function cargaHistorial(){
+  const { data, error } = await sb.from('facturas').select('*').order('anio',{ascending:false}).order('mes',{ascending:false});
+  if(error){ console.error(error); return []; }
+  return data;
+}
+
+// ---------- RENDER: INFORME ----------
+function renderInformeCoslada(list, anio, mes){
+  const total = list.length;
+  const bultos = list.reduce((s,e)=>s+e.Bultos,0);
+  const peso = list.reduce((s,e)=>s+e.Peso,0);
+  const portes = list.reduce((s,e)=>s+e.Portes,0);
+  const comb = list.reduce((s,e)=>s+e["Cargo Combustible"],0);
+
+  const dest = {};
+  for(const e of list){
+    const k = e.Destinatario;
+    if(!dest[k]) dest[k]={n:0,bultos:0,kg:0,portes:0,comb:0};
+    dest[k].n++; dest[k].bultos+=e.Bultos; dest[k].kg+=e.Peso; dest[k].portes+=e.Portes; dest[k].comb+=e["Cargo Combustible"];
+  }
+  const destRows = Object.entries(dest).map(([k,v])=>({dest:k,...v})).sort((a,b)=>b.portes-a.portes);
+  const rp = rangoPesoTabla(list);
+
+  let html = `
+  <div class="kpis">
+    <div class="kpi"><div class="n">${total}</div><div class="l">Expediciones</div></div>
+    <div class="kpi"><div class="n">${bultos}</div><div class="l">Bultos</div></div>
+    <div class="kpi"><div class="n">${num(peso)}</div><div class="l">Peso (Kg)</div></div>
+    <div class="kpi"><div class="n">${euro(portes)}</div><div class="l">Portes</div></div>
+    <div class="kpi"><div class="n">${euro(comb)}</div><div class="l">Combustible</div></div>
+    <div class="kpi"><div class="n">${euro(portes+comb)}</div><div class="l">Total + IVA</div></div>
+  </div>
+  <h3>Desglose por destinatario</h3>
+  <table><thead><tr><th>Destinatario</th><th class="num">Nº Envíos</th><th class="num">Bultos</th>
+  <th class="num">Kg</th><th class="num">Portes</th><th class="num">Combustible</th></tr></thead><tbody>
+  ${destRows.map(r=>`<tr><td>${r.dest}</td><td class="num">${r.n}</td><td class="num">${r.bultos}</td>
+    <td class="num">${num(r.kg)}</td><td class="num">${euro(r.portes)}</td><td class="num">${euro(r.comb)}</td></tr>`).join('')}
+  <tr class="total"><td>TOTAL</td><td class="num">${total}</td><td class="num">${bultos}</td>
+    <td class="num">${num(peso)}</td><td class="num">${euro(portes)}</td><td class="num">${euro(comb)}</td></tr>
+  </tbody></table>
+  <h3>Análisis de costes por rango de peso</h3>
+  <table><thead><tr><th>Rango de peso</th><th class="num">Envíos</th><th class="num">Coste medio</th><th class="num">Coste frecuente (moda)</th></tr></thead><tbody>
+  ${rp.map(r=>`<tr><td>${r.label}</td><td class="num">${r.n}</td><td class="num">${r.n?euro(r.media):'—'}</td>
+    <td class="num">${r.n?euro(r.modaVal)+' ('+r.modaN+' env.)':'N/A'}</td></tr>`).join('')}
+  </tbody></table>`;
+
+  const emailBody = `Hola,
+
+A continuación, desglose de la factura emitida en el mes de ${MESES[mes-1].toLowerCase()} por parte de SEUR para servicios prestados en COSLADA.
+
+1. Resumen General (${MESES[mes-1]} ${anio})
+Número total de expediciones: ${total}
+Total bultos enviados: ${bultos}
+Total portes: ${euro(portes)}
+Total cargos por combustible: ${euro(comb)}
+Total facturado por envíos: ${euro(portes+comb)} + IVA
+Peso total: ${num(peso)} Kg
+
+2. Desglose por Destinatario
+Destinatario | N Envíos | Bultos | Kg Totales | Portes (€) | Cargos Combustible (€)
+${destRows.map(r=>`${r.dest} | ${r.n} | ${r.bultos} | ${num(r.kg)} | ${euro(r.portes)} | ${euro(r.comb)}`).join('\n')}
+TOTAL | ${total} | ${bultos} | ${num(peso)} | ${euro(portes)} | ${euro(comb)}
+
+3. Análisis de Costes por Rango de Peso
+Rango de Peso | Envíos | Coste Medio (€) | Coste Frecuente (Moda)
+${rp.map(r=>`${r.label} | ${r.n} | ${r.n?euro(r.media):'—'} | ${r.n?euro(r.modaVal)+' ('+r.modaN+' env.)':'N/A'}`).join('\n')}
+
+Un saludo.`;
+
+  return {html, emailBody, registro:{centro:'coslada', anio, mes, expediciones:total, bultos, peso, portes, combustible:comb, total:portes+comb}};
+}
+
+function renderInformeHospitalet(list, anio, mes){
+  list.forEach(e=>e.Categoria = clasificaHospitalet(e));
+  const total = list.length;
+  const cats = ["Envíos Leotec -> Decathlon","Envíos Leotec -> Otros","Recogidas Decathlon -> Leotec","Otras Recogidas (Otros -> Leotec)"];
+  const counts = {}; cats.forEach(c=>counts[c]=list.filter(e=>e.Categoria===c).length);
+  const n2shop = list.filter(e=>e.Producto==="2SHP").length;
+
+  const bultos = list.reduce((s,e)=>s+e.Bultos,0);
+  const peso = list.reduce((s,e)=>s+e.Peso,0);
+  const portes = list.reduce((s,e)=>s+e.Portes,0);
+  const comb = list.reduce((s,e)=>s+e["Cargo Combustible"],0);
+  const rp = rangoPesoTabla(list);
+
+  const envios = topCentros(list, e=>e.Categoria==="Envíos Leotec -> Decathlon", "Destinatario");
+  const recogidas = topCentros(list, e=>e.Categoria==="Recogidas Decathlon -> Leotec", "Remitente");
+
+  function tablaCentros(tc){
+    const top10 = tc.arr.slice(0,10), resto = tc.arr.slice(10);
+    let rows = top10.map(r=>`<tr><td>${r.centro}</td><td class="num">${r.n}</td><td class="num">${num(r.kg)}</td>
+      <td class="num">${euro(r.portes)}</td><td class="num">${euro(r.comb)}</td></tr>`).join('');
+    if(resto.length){
+      const rk=resto.reduce((s,r)=>s+r.kg,0), rp_=resto.reduce((s,r)=>s+r.portes,0), rc=resto.reduce((s,r)=>s+r.comb,0), rn=resto.reduce((s,r)=>s+r.n,0);
+      rows += `<tr><td>Otros centros (${resto.length} restantes)</td><td class="num">${rn}</td><td class="num">${num(rk)}</td><td class="num">${euro(rp_)}</td><td class="num">${euro(rc)}</td></tr>`;
+    }
+    const tn=tc.arr.reduce((s,r)=>s+r.n,0), tk=tc.arr.reduce((s,r)=>s+r.kg,0), tp=tc.arr.reduce((s,r)=>s+r.portes,0), tco=tc.arr.reduce((s,r)=>s+r.comb,0);
+    rows += `<tr class="total"><td>TOTAL</td><td class="num">${tn}</td><td class="num">${num(tk)}</td><td class="num">${euro(tp)}</td><td class="num">${euro(tco)}</td></tr>`;
+    return `<table><thead><tr><th>Centro</th><th class="num">Exp.</th><th class="num">Kg</th><th class="num">Portes</th><th class="num">Combustible</th></tr></thead><tbody>${rows}</tbody></table>`;
+  }
+
+  let html = `
+  <div class="kpis">
+    <div class="kpi"><div class="n">${total}</div><div class="l">Expediciones</div></div>
+    <div class="kpi"><div class="n">${bultos}</div><div class="l">Bultos</div></div>
+    <div class="kpi"><div class="n">${num(peso)}</div><div class="l">Peso (Kg)</div></div>
+    <div class="kpi"><div class="n">${euro(portes)}</div><div class="l">Portes</div></div>
+    <div class="kpi"><div class="n">${euro(comb)}</div><div class="l">Combustible</div></div>
+    <div class="kpi"><div class="n">${euro(portes+comb)}</div><div class="l">Total + IVA</div></div>
+  </div>
+  <h3>Resumen de expediciones</h3>
+  <table><thead><tr><th>Categoría</th><th class="num">Nº</th><th class="num">%</th></tr></thead><tbody>
+  ${cats.map(c=>`<tr><td>${c}</td><td class="num">${counts[c]}</td><td class="num">${num(100*counts[c]/total)}%</td></tr>`).join('')}
+  <tr><td>*Servicios Pickup (2SHOP)</td><td class="num">${n2shop}</td><td class="num">${num(100*n2shop/total)}%</td></tr>
+  </tbody></table>
+  <h3>Análisis por rango de peso</h3>
+  <table><thead><tr><th>Rango de peso</th><th class="num">Exp.</th><th class="num">Coste medio</th><th class="num">Coste frecuente</th></tr></thead><tbody>
+  ${rp.map(r=>`<tr><td>${r.label}</td><td class="num">${r.n}</td><td class="num">${r.n?euro(r.media):'—'}</td>
+    <td class="num">${r.n?euro(r.modaVal)+' ('+r.modaN+' env.)':'N/A'}</td></tr>`).join('')}
+  </tbody></table>
+  <h3>Envíos Leotec → Decathlon (top 10 centros)</h3>
+  ${tablaCentros(envios)}
+  <h3>Recogidas Decathlon → Leotec (top 10 centros)</h3>
+  ${tablaCentros(recogidas)}`;
+
+  const emailBody = `Hola,
+
+A continuación, análisis de la factura recibida por parte de SEUR correspondiente al pasado mes de ${MESES[mes-1].toLowerCase()} de ${anio} para el centro de trabajo de Hospitalet de Llobregat.
+
+Resumen de expediciones totales:
+Total Expediciones: ${total}
+${cats.map(c=>`${c}: ${counts[c]} (${num(100*counts[c]/total)}%)`).join('\n')}
+*Servicios Pickup (2SHOP): ${n2shop} (${num(100*n2shop/total)}%)
+
+Análisis por rango de peso:
+Rango de Peso | Expediciones | Coste Medio (€) | Coste Frecuente (€)
+${rp.map(r=>`${r.label} | ${r.n} | ${r.n?euro(r.media):'—'} | ${r.n?euro(r.modaVal)+' ('+r.modaN+' env.)':'N/A'}`).join('\n')}
+
+Totales del Periodo
+Bultos: ${bultos}
+Peso: ${num(peso)} kg
+Portes: ${euro(portes)}
+Cargo Combustible: ${euro(comb)}
+
+2. Desglose por Centros Decathlon
+1. Envíos desde Leotec a centros Decathlon: ${envios.total} expediciones en ${envios.ncentros} centros.
+${envios.arr.slice(0,10).map(r=>`${r.centro}: ${r.n} exp. — ${euro(r.portes)}`).join('\n')}
+
+2. Recogidas desde centros Decathlon hacia Leotec: ${recogidas.total} expediciones en ${recogidas.ncentros} centros.
+${recogidas.arr.slice(0,10).map(r=>`${r.centro}: ${r.n} exp. — ${euro(r.portes)}`).join('\n')}
+
+Un saludo.`;
+
+  return {html, emailBody, registro:{centro:'hospitalet', anio, mes, expediciones:total, bultos, peso, portes, combustible:comb, total:portes+comb,
+    detalleCats:counts, n2shop}};
+}
+
+// ---------- MAIN FLOW ----------
+let ultimoInforme = null;
+let cacheEnvios = []; // para tabla de tarifas: acumula todos los envíos de todas las facturas cargadas esta sesión
+
+async function procesaArchivo(file){
+  const rows = await parseWorkbook(file);
+  const list = agrupaExpediciones(rows);
+  const centro = detectaCentro(list);
+  const {anio, mes} = mesFactura(rows);
+  list.forEach(e=>{ e._centro = centro; e._zona = clasificaZona(e.PoblacionDestinatario, "", centro); e._contrato = precioContrato(e._zona, e.PesoFacturable); });
+  cacheEnvios = cacheEnvios.concat(list.filter(e=>e.Portes>0));
+
+  const res = centro==='coslada' ? renderInformeCoslada(list, anio, mes) : renderInformeHospitalet(list, anio, mes);
+  res.registro.email_borrador = res.emailBody;
+  res.registro.detalle = res.registro.detalleCats ? {detalleCats: res.registro.detalleCats, n2shop: res.registro.n2shop} : null;
+  await guardaRegistro(res.registro);
+  ultimoInforme = {...res, centro, anio, mes};
+  return {centro, anio, mes};
+}
+
+function mostrarInforme(){
+  if(!ultimoInforme) return;
+  document.getElementById('informe-empty').style.display='none';
+  const badge = `<span class="badge-center ${ultimoInforme.centro}">${ultimoInforme.centro.toUpperCase()}</span>`;
+  document.getElementById('informe-content').innerHTML = `
+    <div class="card">
+      <div class="flex-between"><h3 style="border:none;margin:0;">${badge} ${MESES[ultimoInforme.mes-1]} ${ultimoInforme.anio}</h3>
+      <button class="small" id="btn-copy-email">Copiar borrador de email</button></div>
+      ${ultimoInforme.html}
+    </div>
+    <div class="card">
+      <div class="flex-between"><h3 style="border:none;margin:0;">Borrador de email</h3></div>
+      <textarea id="email-text" readonly>${ultimoInforme.emailBody}</textarea>
+    </div>`;
+  document.getElementById('btn-copy-email').onclick = ()=>{
+    navigator.clipboard.writeText(ultimoInforme.emailBody);
+    document.getElementById('btn-copy-email').textContent = '¡Copiado!';
+    setTimeout(()=>document.getElementById('btn-copy-email').textContent='Copiar borrador de email',1500);
+  };
+  document.querySelector('[data-tab="informe"]').click();
+}
+
+// ---------- HISTORIAL ----------
+let histCache = [];
+let sortKey='anio', sortDir=1;
+async function refrescaHistorial(){
+  histCache = await cargaHistorial();
+  const anios = [...new Set(histCache.map(r=>r.anio))].sort();
+  const selAnio = document.getElementById('f-anio');
+  selAnio.innerHTML = '<option value="">Todos los años</option>' + anios.map(a=>`<option value="${a}">${a}</option>`).join('');
+  renderHistorial();
+}
+function renderHistorial(){
+  const fc = document.getElementById('f-centro').value;
+  const fa = document.getElementById('f-anio').value;
+  const ft = document.getElementById('f-texto').value.toLowerCase();
+  let rows = histCache.filter(r=>
+    (!fc || r.centro===fc) && (!fa || String(r.anio)===fa) && (!ft || MESES[r.mes-1].toLowerCase().includes(ft)));
+  rows.sort((a,b)=>{
+    let va=a[sortKey], vb=b[sortKey];
+    if(sortKey==='mes'){ va=MESES[a.mes-1]; vb=MESES[b.mes-1]; }
+    if(typeof va==='string') return sortDir*va.localeCompare(vb);
+    return sortDir*((va||0)-(vb||0));
+  });
+  const tbody = document.querySelector('#tbl-historial tbody');
+  tbody.innerHTML = rows.map(r=>`<tr>
+    <td><span class="badge-center ${r.centro}">${r.centro}</span></td>
+    <td>${MESES[r.mes-1]}</td><td>${r.anio}</td>
+    <td class="num">${r.expediciones}</td><td class="num">${r.bultos}</td>
+    <td class="num">${num(r.peso)}</td><td class="num">${euro(r.portes)}</td>
+    <td class="num">${euro(r.combustible)}</td><td class="num">${euro(r.total)}</td>
+  </tr>`).join('');
+  document.getElementById('hist-empty').style.display = rows.length? 'none':'block';
+  document.getElementById('tbl-historial').style.display = rows.length? 'table':'none';
+}
+document.querySelectorAll('#tbl-historial th').forEach(th=>{
+  th.onclick = ()=>{
+    const k = th.dataset.k; if(!k) return;
+    if(sortKey===k) sortDir*=-1; else {sortKey=k; sortDir=1;}
+    renderHistorial();
+  };
+});
+['f-centro','f-anio','f-texto'].forEach(id=>document.getElementById(id).addEventListener('input', renderHistorial));
+
+document.getElementById('btn-export').onclick = ()=>{
+  const headers = ['centro','mes','anio','expediciones','bultos','peso','portes','combustible','total'];
+  const csv = [headers.join(';')].concat(histCache.map(r=>headers.map(h=>h==='mes'?MESES[r.mes-1]:r[h]).join(';'))).join('\n');
+  const blob = new Blob([csv], {type:'text/csv'});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download='historico_seur.csv'; a.click();
+};
+document.getElementById('btn-export-json').onclick = ()=>{
+  const blob = new Blob([JSON.stringify(histCache,null,2)], {type:'application/json'});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download='historico_seur.json'; a.click();
+};
+document.getElementById('import-json').addEventListener('change', async (e)=>{
+  const file = e.target.files[0]; if(!file) return;
+  const text = await file.text();
+  const data = JSON.parse(text);
+  for(const reg of data) await guardaRegistro(reg);
+  await refrescaHistorial();
+  e.target.value='';
+});
+
+// ---------- TARIFAS ----------
+function renderTarifas(){
+  const tbody = document.querySelector('#tbl-tarifas tbody');
+  if(!cacheEnvios.length){
+    document.getElementById('tarifas-empty').style.display='block';
+    document.getElementById('tbl-tarifas').style.display='none';
+    return;
+  }
+  document.getElementById('tarifas-empty').style.display='none';
+  document.getElementById('tbl-tarifas').style.display='table';
+  const grupos = {};
+  for(const e of cacheEnvios){
+    const b = tramoContrato(e.PesoFacturable);
+    const key = e._zona+'|'+b;
+    if(!grupos[key]) grupos[key]={zona:e._zona, tramo:b, n:0, sum:0, contrato:CONTRATO[e._zona][b]};
+    grupos[key].n++; grupos[key].sum+=e.Portes;
+  }
+  const rows = Object.values(grupos).sort((a,b)=> a.zona.localeCompare(b.zona) || a.tramo-b.tramo);
+  tbody.innerHTML = rows.map(r=>{
+    const media = r.sum/r.n; const dif = media-r.contrato;
+    const pill = dif<0 ? `<span class="pill down">${num(dif)} €</span>` : `<span class="pill up">+${num(dif)} €</span>`;
+    return `<tr><td>${r.zona}</td><td>Hasta ${r.tramo} kg</td><td class="num">${euro(r.contrato)}</td>
+      <td class="num">${r.n}</td><td class="num">${euro(media)}</td><td class="num">${pill}</td></tr>`;
+  }).join('');
+}
+
+// ---------- TABS ----------
+document.querySelectorAll('.tab').forEach(t=>{
+  t.onclick = ()=>{
+    document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(x=>x.classList.remove('active'));
+    t.classList.add('active');
+    document.getElementById('panel-'+t.dataset.tab).classList.add('active');
+    if(t.dataset.tab==='historial') refrescaHistorial();
+    if(t.dataset.tab==='tarifas') renderTarifas();
+  };
+});
+
+// ---------- UPLOAD ----------
+const drop = document.getElementById('drop');
+const fileInput = document.getElementById('file');
+drop.addEventListener('dragover', e=>{e.preventDefault(); drop.classList.add('over');});
+drop.addEventListener('dragleave', ()=>drop.classList.remove('over'));
+drop.addEventListener('drop', e=>{
+  e.preventDefault(); drop.classList.remove('over');
+  handleFiles(e.dataTransfer.files);
+});
+fileInput.addEventListener('change', e=>handleFiles(e.target.files));
+
+async function handleFiles(files){
+  const status = document.getElementById('status');
+  status.textContent = 'Procesando...';
+  try{
+    for(const f of files){
+      const {centro, anio, mes} = await procesaArchivo(f);
+      status.textContent = `Procesada: ${f.name} → ${centro.toUpperCase()} (${MESES[mes-1]} ${anio})`;
+    }
+    mostrarInforme();
+  }catch(err){
+    status.textContent = 'Error al leer el archivo: '+err.message;
+  }
+}
+
+// ---------- VERIFICACIÓN CONTRA API SEUR (tarifa exacta) ----------
+async function verificaContraAPI(){
+  const btn = document.getElementById('btn-verify-api');
+  const status = document.getElementById('api-status');
+  const out = document.getElementById('api-resultado');
+  if(!cacheEnvios.length){
+    status.textContent = 'Sube antes una factura para poder verificarla contra la API.';
+    return;
+  }
+  btn.disabled = true;
+  status.textContent = `Consultando tarifas reales en la API de SEUR para ${cacheEnvios.length} envíos...`;
+  out.innerHTML = '';
+
+  const shipments = cacheEnvios.map(e => ({
+    originPostalCode: ORIGEN_POSTAL[e._centro],
+    destinationPostalCode: String(e.CPDestinatario||'').padStart(5,'0'),
+    weight: e.PesoFacturable,
+    packsNumber: e.Bultos || 1,
+    serviceCode: 1,
+    productCode: 2,
+    ccc: CCC_POR_CENTRO[e._centro],
+  }));
+
+  try{
+    const resp = await fetch('/api/seur-valuate', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({shipments})
+    });
+    const json = await resp.json();
+    if(!resp.ok) throw new Error(json.error || 'Error desconocido');
+    const resultados = json.data;
+
+    let n=0, sumDif=0, mismatches=[];
+    for(let i=0;i<cacheEnvios.length;i++){
+      const e = cacheEnvios[i];
+      const r = resultados[i];
+      if(!r || r.deliveryNoteValuate==null) continue;
+      n++;
+      const dif = e.Portes - r.deliveryNoteValuate;
+      sumDif += dif;
+      if(Math.abs(dif) > 0.05){
+        mismatches.push({destinatario:e.Destinatario, peso:e.PesoFacturable, real:e.Portes, api:r.deliveryNoteValuate, dif});
+      }
+    }
+    mismatches.sort((a,b)=>Math.abs(b.dif)-Math.abs(a.dif));
+
+    status.textContent = `Verificados ${n} de ${cacheEnvios.length} envíos contra la tarifa oficial de SEUR.`;
+    out.innerHTML = `
+      <div class="kpis">
+        <div class="kpi"><div class="n">${n}</div><div class="l">Envíos verificados</div></div>
+        <div class="kpi"><div class="n">${mismatches.length}</div><div class="l">Con diferencia &gt; 0,05€</div></div>
+        <div class="kpi"><div class="n">${euro(sumDif)}</div><div class="l">Diferencia total (real − API)</div></div>
+      </div>
+      ${mismatches.length ? `
+      <h3>Envíos con diferencia frente a la tarifa oficial (top 20)</h3>
+      <table><thead><tr><th>Destinatario</th><th class="num">Peso (Kg)</th>
+        <th class="num">Facturado (€)</th><th class="num">Tarifa oficial API (€)</th><th class="num">Diferencia</th></tr></thead><tbody>
+      ${mismatches.slice(0,20).map(m=>`<tr><td>${m.destinatario}</td><td class="num">${num(m.peso)}</td>
+        <td class="num">${euro(m.real)}</td><td class="num">${euro(m.api)}</td>
+        <td class="num">${m.dif<0?'<span class="pill down">':'<span class="pill up">'}${num(m.dif)} €</span></td></tr>`).join('')}
+      </tbody></table>` : '<p class="note">No se han encontrado diferencias relevantes.</p>'}`;
+  }catch(err){
+    status.textContent = 'Error al consultar la API de SEUR: '+err.message;
+  }finally{
+    btn.disabled = false;
+  }
+}
+document.getElementById('btn-verify-api').onclick = verificaContraAPI;
+
+// ---------- AUTENTICACIÓN ----------
+function mostrarApp(user){
+  document.getElementById('login-screen').style.display='none';
+  document.getElementById('app').style.display='block';
+  document.getElementById('user-email').textContent = user.email;
+  refrescaHistorial();
+}
+function mostrarLogin(){
+  document.getElementById('login-screen').style.display='block';
+  document.getElementById('app').style.display='none';
+}
+document.getElementById('btn-login').onclick = async ()=>{
+  const email = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-pass').value;
+  const err = document.getElementById('login-error');
+  err.textContent = '';
+  const { data, error } = await sb.auth.signInWithPassword({ email, password });
+  if(error){ err.textContent = error.message; return; }
+  mostrarApp(data.user);
+};
+document.getElementById('btn-signup').onclick = async ()=>{
+  const email = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-pass').value;
+  const err = document.getElementById('login-error');
+  err.textContent = '';
+  if(password.length < 6){ err.textContent = 'La contraseña debe tener al menos 6 caracteres.'; return; }
+  const { data, error } = await sb.auth.signUp({ email, password });
+  if(error){ err.textContent = error.message; return; }
+  if(data.session){ mostrarApp(data.user); }
+  else { err.style.color='var(--ok)'; err.textContent = 'Cuenta creada. Revisa tu correo para confirmarla y luego inicia sesión.'; }
+};
+document.getElementById('btn-logout').onclick = async ()=>{
+  await sb.auth.signOut();
+  mostrarLogin();
+};
+(async ()=>{
+  const { data: { session } } = await sb.auth.getSession();
+  if(session) mostrarApp(session.user);
+  else mostrarLogin();
+})();
+</script>
+</body>
+</html>
