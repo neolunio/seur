@@ -103,6 +103,17 @@
     </div>
     <div id="login-error"></div>
     <div class="note">La primera vez, pulsa "Crear cuenta" con tu email y una contraseña. Supabase te enviará un correo de confirmación si lo tienes activado en el proyecto.</div>
+    <div class="note" style="margin-top:10px;"><a href="#" id="link-forgot" style="color:var(--dpd);">¿Olvidaste tu contraseña?</a></div>
+  </div>
+</div>
+
+<div class="wrap" id="recovery-screen" style="display:none;">
+  <header><h1>Panel <span>SEUR</span> · Leotec</h1></header>
+  <div class="card" style="max-width:380px;margin:0 auto;">
+    <h3 style="margin-top:0;">Nueva contraseña</h3>
+    <input type="password" id="recovery-pass" placeholder="Nueva contraseña (mín. 6 caracteres)" autocomplete="new-password" />
+    <button id="btn-recovery-save" style="width:100%;">Guardar nueva contraseña</button>
+    <div id="recovery-error" class="note" style="min-height:16px;color:var(--bad);"></div>
   </div>
 </div>
 
@@ -1085,6 +1096,42 @@ document.getElementById('btn-logout').onclick = async ()=>{
   await sb.auth.signOut();
   mostrarLogin();
 };
+
+// ---------- RECUPERAR CONTRASEÑA ----------
+document.getElementById('link-forgot').onclick = async (e)=>{
+  e.preventDefault();
+  const email = document.getElementById('login-email').value.trim();
+  const err = document.getElementById('login-error');
+  if(!email){ err.style.color='var(--bad)'; err.textContent = 'Escribe primero tu email arriba y vuelve a pulsar el enlace.'; return; }
+  const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin + window.location.pathname });
+  if(error){ err.style.color='var(--bad)'; err.textContent = error.message; return; }
+  err.style.color='var(--ok)';
+  err.textContent = `Te hemos enviado un enlace a ${email} para restablecer tu contraseña. Revisa también la carpeta de spam.`;
+};
+
+function mostrarRecovery(){
+  document.getElementById('login-screen').style.display='none';
+  document.getElementById('app').style.display='none';
+  document.getElementById('recovery-screen').style.display='block';
+}
+document.getElementById('btn-recovery-save').onclick = async ()=>{
+  const pass = document.getElementById('recovery-pass').value;
+  const err = document.getElementById('recovery-error');
+  if(pass.length < 6){ err.textContent = 'La contraseña debe tener al menos 6 caracteres.'; return; }
+  const { error } = await sb.auth.updateUser({ password: pass });
+  if(error){ err.textContent = error.message; return; }
+  err.style.color='var(--ok)';
+  err.textContent = 'Contraseña actualizada. Ya puedes usarla para entrar.';
+  setTimeout(async ()=>{
+    document.getElementById('recovery-screen').style.display='none';
+    const { data: { session } } = await sb.auth.getSession();
+    if(session) mostrarApp(session.user); else mostrarLogin();
+  }, 1500);
+};
+sb.auth.onAuthStateChange((event, session)=>{
+  if(event === 'PASSWORD_RECOVERY') mostrarRecovery();
+});
+
 (async ()=>{
   const { data: { session } } = await sb.auth.getSession();
   if(session) mostrarApp(session.user);
