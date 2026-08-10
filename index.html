@@ -6,6 +6,7 @@
 <title>Panel SEUR · Leotec</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.0/chart.umd.min.js"></script>
 <style>
   :root{
     --ink:#1c2b33; --paper:#f6f4ee; --line:#d8d2c4; --seur:#f47b20; --dpd:#0a2540;
@@ -73,6 +74,19 @@
   #login-error{color:var(--bad);font-size:12.5px;margin-top:8px;min-height:16px;}
   #app{display:none;}
   .userbar{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:10px;}
+  .subtabs{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;}
+  .subtab{padding:6px 13px;border:1px solid var(--line);background:var(--card);
+    border-radius:7px;cursor:pointer;font-size:12px;color:var(--muted);}
+  .subtab.active{color:#fff;background:var(--dpd);border-color:var(--dpd);font-weight:600;}
+  .charts-row{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:16px 0;}
+  @media (max-width:720px){.charts-row{grid-template-columns:1fr;}}
+  .chart-box{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;}
+  .chart-box canvas{max-height:240px;}
+  .chart-box h4{font-size:11.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);
+    margin:0 0 10px;}
+  .email-preview{background:#fff;border:1px solid var(--line);border-radius:10px;overflow:hidden;}
+  .email-preview-inner{padding:0;}
+  .email-actions{display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;}
 </style>
 </head>
 <body>
@@ -101,6 +115,7 @@
   <div class="tabs">
     <div class="tab active" data-tab="subir">Subir factura</div>
     <div class="tab" data-tab="informe">Informe del mes</div>
+    <div class="tab" data-tab="evolucion">Evolución mensual</div>
     <div class="tab" data-tab="historial">Historial</div>
     <div class="tab" data-tab="tarifas">Tarifas</div>
   </div>
@@ -118,7 +133,19 @@
 
   <div class="panel" id="panel-informe">
     <div id="informe-empty" class="empty card">Sube una factura para ver aquí el informe del mes.</div>
+    <div id="informe-subtabs" class="subtabs"></div>
     <div id="informe-content"></div>
+  </div>
+
+  <div class="panel" id="panel-evolucion">
+    <div class="card">
+      <div class="flex-between">
+        <h3 style="border:none;margin:0;">Evolución mensual — Hospitalet</h3>
+      </div>
+      <div class="note">Envíos y recogidas por categoría, mes a mes, tal como en tu informe manual.</div>
+      <div id="evolucion-content"></div>
+      <div id="evolucion-empty" class="empty" style="display:none;">Todavía no hay facturas de Hospitalet guardadas.</div>
+    </div>
   </div>
 
   <div class="panel" id="panel-historial">
@@ -139,6 +166,10 @@
         <label class="ghost small" style="border:1px solid var(--dpd);border-radius:7px;padding:5px 10px;cursor:pointer;">
           Importar JSON<input type="file" id="import-json" accept=".json" style="display:none" />
         </label>
+      </div>
+      <div class="charts-row">
+        <div class="chart-box"><h4>Portes por mes (€)</h4><canvas id="chart-hist-portes"></canvas></div>
+        <div class="chart-box"><h4>Expediciones por mes</h4><canvas id="chart-hist-exp"></canvas></div>
       </div>
       <table id="tbl-historial">
         <thead><tr>
@@ -178,8 +209,8 @@
 <script>
 // ---------- CONFIGURA AQUÍ TU PROYECTO SUPABASE ----------
 // Los encuentras en Supabase -> Project Settings -> API
-const SUPABASE_URL = "https://wdxaamhqndheewmvuusg.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndkeGFhbWhxbmRoZWV3bXZ1dXNnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYyNjAzMjIsImV4cCI6MjEwMTgzNjMyMn0.OjjPonYF3CYuD2p9K19fQb3Rh7iRFozVmPk-Lan-OBE";
+const SUPABASE_URL = "https://TU-PROYECTO.supabase.co";
+const SUPABASE_ANON_KEY = "TU-ANON-KEY-PUBLICA";
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 const COLS_CHARGE = ["Portes","Reexpedicion Especial","Gestion Reembolso","Seguro","Cargo Combustible",
@@ -514,7 +545,87 @@ Un saludo.`;
 }
 
 // ---------- MAIN FLOW ----------
-let ultimoInforme = null;
+// ---------- GRÁFICAS ----------
+const chartRegistry = {};
+function renderChart(canvasId, config){
+  const el = document.getElementById(canvasId);
+  if(!el) return null;
+  if(chartRegistry[canvasId]) chartRegistry[canvasId].destroy();
+  chartRegistry[canvasId] = new Chart(el.getContext('2d'), config);
+  return chartRegistry[canvasId];
+}
+const CHART_COLORS = ['#0a2540','#f47b20','#4a6b2f','#2c4a8c','#b3432b','#7c7568','#2f7d5b','#8a5a2b'];
+
+function renderOffscreenChart(config, width, height){
+  return new Promise(resolve=>{
+    const canvas = document.createElement('canvas');
+    canvas.width = width; canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    config.options = config.options || {};
+    config.options.responsive = false;
+    config.options.animation = false;
+    config.plugins = (config.plugins||[]).concat([{
+      id:'_capture',
+      afterRender(chart){ const url = chart.toBase64Image(); chart.destroy(); resolve(url); }
+    }]);
+    new Chart(ctx, config);
+  });
+}
+
+function rangoPesoChartConfig(rp){
+  return {
+    type:'bar',
+    data:{ labels: rp.map(r=>r.label),
+      datasets:[{ label:'Coste medio (€)', data: rp.map(r=>r.n?r.media:0), backgroundColor:'#f47b20', borderRadius:4 }] },
+    options:{ plugins:{legend:{display:false}, title:{display:true,text:'Coste medio por rango de peso'}},
+      scales:{ y:{ beginAtZero:true } } }
+  };
+}
+function categoriasChartConfig(labels, data){
+  return {
+    type:'doughnut',
+    data:{ labels, datasets:[{ data, backgroundColor: CHART_COLORS }] },
+    options:{ plugins:{ legend:{position:'right', labels:{boxWidth:12,font:{size:10}}},
+      title:{display:true,text:'Reparto de expediciones'} } }
+  };
+}
+function destinatariosChartConfig(labels, data){
+  return {
+    type:'bar',
+    data:{ labels, datasets:[{ label:'Portes (€)', data, backgroundColor:'#0a2540', borderRadius:4 }] },
+    options:{ indexAxis:'y', plugins:{legend:{display:false}, title:{display:true,text:'Top destinatarios por portes'}} }
+  };
+}
+
+// ---------- INCIDENCIAS ----------
+function detectaIncidencias(list, registroActual, registroAnterior){
+  const inc = [];
+  const ajustes = list.filter(e=>e.Portes===0);
+  if(ajustes.length){
+    inc.push(`${ajustes.length} línea(s) sin coste de portes (posibles ajustes o diferencias de peso) — revisar si corresponde.`);
+  }
+  if(registroAnterior){
+    const difPortes = registroActual.portes - registroAnterior.portes;
+    const pctPortes = registroAnterior.portes ? (100*difPortes/registroAnterior.portes) : 0;
+    if(Math.abs(pctPortes) >= 10){
+      inc.push(`Los portes ${difPortes>=0?'han subido':'han bajado'} un ${Math.abs(pctPortes).toFixed(1)}% respecto al mes anterior (${euro(registroAnterior.portes)} → ${euro(registroActual.portes)}).`);
+    }
+    const difExp = registroActual.expediciones - registroAnterior.expediciones;
+    const pctExp = registroAnterior.expediciones ? (100*difExp/registroAnterior.expediciones) : 0;
+    if(Math.abs(pctExp) >= 15){
+      inc.push(`El número de expediciones ${difExp>=0?'ha subido':'ha bajado'} un ${Math.abs(pctExp).toFixed(1)}% respecto al mes anterior (${registroAnterior.expediciones} → ${registroActual.expediciones}).`);
+    }
+  }
+  const maxEnvio = list.reduce((max,e)=> e.Portes>(max?max.Portes:0) ? e : max, null);
+  if(maxEnvio){
+    inc.push(`El envío más caro del periodo es a ${maxEnvio.Destinatario} (${euro(maxEnvio.Portes)}, ${num(maxEnvio.PesoFacturable)} Kg).`);
+  }
+  return inc;
+}
+
+// ---------- INFORMES (multi-factura) ----------
+let informesCargados = {}; // key -> {centro, anio, mes, list, res}
+let activeInformeKey = null;
 let cacheEnvios = []; // para tabla de tarifas: acumula todos los envíos de todas las facturas cargadas esta sesión
 
 async function procesaArchivo(file){
@@ -529,30 +640,167 @@ async function procesaArchivo(file){
   res.registro.email_borrador = res.emailBody;
   res.registro.detalle = res.registro.detalleCats ? {detalleCats: res.registro.detalleCats, n2shop: res.registro.n2shop} : null;
   await guardaRegistro(res.registro);
-  ultimoInforme = {...res, centro, anio, mes};
-  return {centro, anio, mes};
+
+  const key = `${centro}-${anio}-${String(mes).padStart(2,'0')}`;
+  informesCargados[key] = {centro, anio, mes, list, res};
+  activeInformeKey = key;
+  return {centro, anio, mes, key};
 }
 
-function mostrarInforme(){
-  if(!ultimoInforme) return;
+function renderInformeSubtabs(){
+  const cont = document.getElementById('informe-subtabs');
+  const keys = Object.keys(informesCargados).sort();
+  cont.innerHTML = keys.map(k=>{
+    const inf = informesCargados[k];
+    return `<div class="subtab ${k===activeInformeKey?'active':''}" data-key="${k}">
+      <span class="badge-center ${inf.centro}" style="margin-right:6px;">${inf.centro}</span>${MESES[inf.mes-1]} ${inf.anio}</div>`;
+  }).join('');
+  cont.querySelectorAll('.subtab').forEach(el=>{
+    el.onclick = ()=>{ activeInformeKey = el.dataset.key; mostrarInforme(); };
+  });
+}
+
+async function mostrarInforme(){
+  if(!activeInformeKey || !informesCargados[activeInformeKey]) return;
   document.getElementById('informe-empty').style.display='none';
-  const badge = `<span class="badge-center ${ultimoInforme.centro}">${ultimoInforme.centro.toUpperCase()}</span>`;
+  renderInformeSubtabs();
+  const inf = informesCargados[activeInformeKey];
+  const badge = `<span class="badge-center ${inf.centro}">${inf.centro.toUpperCase()}</span>`;
+
   document.getElementById('informe-content').innerHTML = `
     <div class="card">
-      <div class="flex-between"><h3 style="border:none;margin:0;">${badge} ${MESES[ultimoInforme.mes-1]} ${ultimoInforme.anio}</h3>
-      <button class="small" id="btn-copy-email">Copiar borrador de email</button></div>
-      ${ultimoInforme.html}
+      <div class="flex-between"><h3 style="border:none;margin:0;">${badge} ${MESES[inf.mes-1]} ${inf.anio}</h3>
+      <button class="small" id="btn-copy-email">Copiar borrador (texto)</button></div>
+      ${inf.res.html}
+      <div class="charts-row">
+        <div class="chart-box"><h4>Coste por rango de peso</h4><canvas id="chart-rango"></canvas></div>
+        <div class="chart-box"><h4>${inf.centro==='hospitalet'?'Reparto de expediciones':'Top destinatarios'}</h4><canvas id="chart-cat"></canvas></div>
+      </div>
     </div>
     <div class="card">
-      <div class="flex-between"><h3 style="border:none;margin:0;">Borrador de email</h3></div>
-      <textarea id="email-text" readonly>${ultimoInforme.emailBody}</textarea>
+      <div class="flex-between">
+        <h3 style="border:none;margin:0;">Borrador de email</h3>
+        <div class="email-actions">
+          <button class="ghost small" id="btn-gen-html">Generar vista bonita (HTML)</button>
+          <button class="small" id="btn-copy-html" style="display:none;">Copiar como HTML</button>
+        </div>
+      </div>
+      <textarea id="email-text" readonly>${inf.res.emailBody}</textarea>
+      <div id="email-html-preview" class="email-preview" style="display:none;margin-top:12px;"></div>
     </div>`;
+
+  const rp = rangoPesoTabla(inf.list);
+  renderChart('chart-rango', rangoPesoChartConfig(rp));
+  if(inf.centro==='hospitalet'){
+    inf.list.forEach(e=>e.Categoria = e.Categoria || clasificaHospitalet(e));
+    const cats = ["Envíos Leotec -> Decathlon","Envíos Leotec -> Otros","Recogidas Decathlon -> Leotec","Otras Recogidas (Otros -> Leotec)"];
+    const counts = cats.map(c=> inf.list.filter(e=>e.Categoria===c).length);
+    renderChart('chart-cat', categoriasChartConfig(['Envíos→Decathlon','Envíos→Otros','Recogidas Decathlon','Otras recogidas'], counts));
+  } else {
+    const porDest = {};
+    inf.list.forEach(e=>{ porDest[e.Destinatario]=(porDest[e.Destinatario]||0)+e.Portes; });
+    const top = Object.entries(porDest).sort((a,b)=>b[1]-a[1]).slice(0,8);
+    renderChart('chart-cat', destinatariosChartConfig(top.map(t=>t[0]), top.map(t=>t[1])));
+  }
+
   document.getElementById('btn-copy-email').onclick = ()=>{
-    navigator.clipboard.writeText(ultimoInforme.emailBody);
+    navigator.clipboard.writeText(inf.res.emailBody);
     document.getElementById('btn-copy-email').textContent = '¡Copiado!';
-    setTimeout(()=>document.getElementById('btn-copy-email').textContent='Copiar borrador de email',1500);
+    setTimeout(()=>document.getElementById('btn-copy-email').textContent='Copiar borrador (texto)',1500);
   };
+  document.getElementById('btn-gen-html').onclick = async ()=>{
+    const btn = document.getElementById('btn-gen-html');
+    btn.disabled = true; btn.textContent = 'Generando...';
+    const anterior = mesAnteriorDe(inf.centro, inf.anio, inf.mes);
+    const html = await construyeEmailHTML(inf, anterior);
+    const prev = document.getElementById('email-html-preview');
+    prev.innerHTML = html;
+    prev.style.display = 'block';
+    const btnHtml = document.getElementById('btn-copy-html');
+    btnHtml.style.display = 'inline-block';
+    btnHtml.onclick = async ()=>{
+      try{
+        const blobHtml = new Blob([html], {type:'text/html'});
+        const blobText = new Blob([prev.innerText], {type:'text/plain'});
+        await navigator.clipboard.write([new ClipboardItem({'text/html': blobHtml, 'text/plain': blobText})]);
+        btnHtml.textContent = '¡Copiado!';
+      }catch(e){
+        navigator.clipboard.writeText(prev.innerText);
+        btnHtml.textContent = 'Copiado (texto)';
+      }
+      setTimeout(()=>btnHtml.textContent='Copiar como HTML',1500);
+    };
+    btn.disabled = false; btn.textContent = 'Regenerar vista bonita (HTML)';
+  };
+
   document.querySelector('[data-tab="informe"]').click();
+}
+
+function mesAnteriorDe(centro, anio, mes){
+  let a=anio, m=mes-1;
+  if(m===0){ m=12; a=anio-1; }
+  return histCache.find(r=>r.centro===centro && r.anio===a && r.mes===m) || null;
+}
+
+async function construyeEmailHTML(inf, registroAnterior){
+  const {centro, anio, mes, list, res} = inf;
+  const rp = rangoPesoTabla(list);
+  const incidencias = detectaIncidencias(list, res.registro, registroAnterior);
+
+  const chartRango = await renderOffscreenChart(rangoPesoChartConfig(rp), 480, 260);
+  let chartCat;
+  if(centro==='hospitalet'){
+    const cats = ["Envíos Leotec -> Decathlon","Envíos Leotec -> Otros","Recogidas Decathlon -> Leotec","Otras Recogidas (Otros -> Leotec)"];
+    const counts = cats.map(c=> list.filter(e=>e.Categoria===c).length);
+    chartCat = await renderOffscreenChart(categoriasChartConfig(['Envíos→Decathlon','Envíos→Otros','Recogidas Decathlon','Otras recogidas'], counts), 420, 260);
+  } else {
+    const porDest = {};
+    list.forEach(e=>{ porDest[e.Destinatario]=(porDest[e.Destinatario]||0)+e.Portes; });
+    const top = Object.entries(porDest).sort((a,b)=>b[1]-a[1]).slice(0,8);
+    chartCat = await renderOffscreenChart(destinatariosChartConfig(top.map(t=>t[0]), top.map(t=>t[1])), 420, 260);
+  }
+
+  const kpis = [
+    ['Expediciones', res.registro.expediciones],
+    ['Bultos', res.registro.bultos],
+    ['Peso (Kg)', num(res.registro.peso)],
+    ['Portes', euro(res.registro.portes)],
+    ['Combustible', euro(res.registro.combustible)],
+    ['Total + IVA', euro(res.registro.total)],
+  ];
+
+  return `
+  <div style="font-family:Segoe UI,Arial,sans-serif;color:#1c2b33;max-width:640px;">
+    <div style="background:#0a2540;padding:16px 20px;border-radius:8px 8px 0 0;">
+      <span style="color:#fff;font-size:16px;font-weight:700;">Panel SEUR <span style="color:#f47b20;">·</span> Leotec</span>
+      <span style="color:#a9b6c4;font-size:12px;float:right;">${centro.toUpperCase()} — ${MESES[mes-1]} ${anio}</span>
+    </div>
+    <div style="border:1px solid #d8d2c4;border-top:none;padding:18px 20px;">
+      <p>Hola,</p>
+      <p>Análisis de la factura SEUR de <b>${MESES[mes-1].toLowerCase()} de ${anio}</b> para el centro de <b>${centro==='coslada'?'Coslada':'Hospitalet de Llobregat'}</b>.</p>
+
+      <table style="width:100%;border-collapse:collapse;margin:14px 0;">
+        <tr>${kpis.map(k=>`<td style="text-align:center;padding:8px 4px;background:#f6f4ee;border:1px solid #d8d2c4;">
+          <div style="font-size:17px;font-weight:700;">${k[1]}</div>
+          <div style="font-size:9.5px;color:#7c7568;text-transform:uppercase;">${k[0]}</div></td>`).join('')}</tr>
+      </table>
+
+      ${incidencias.length ? `
+      <h3 style="font-size:13px;color:#0a2540;border-bottom:1px solid #d8d2c4;padding-bottom:6px;">Incidencias y observaciones</h3>
+      <ul style="font-size:13px;padding-left:18px;">${incidencias.map(i=>`<li style="margin-bottom:4px;">${i}</li>`).join('')}</ul>` : ''}
+
+      <h3 style="font-size:13px;color:#0a2540;border-bottom:1px solid #d8d2c4;padding-bottom:6px;">Análisis visual</h3>
+      <table style="width:100%;"><tr>
+        <td style="width:50%;"><img src="${chartRango}" width="240" height="130" /></td>
+        <td style="width:50%;"><img src="${chartCat}" width="220" height="130" /></td>
+      </tr></table>
+
+      <h3 style="font-size:13px;color:#0a2540;border-bottom:1px solid #d8d2c4;padding-bottom:6px;">Detalle</h3>
+      ${res.html}
+
+      <p style="margin-top:18px;">Un saludo.</p>
+    </div>
+  </div>`;
 }
 
 // ---------- HISTORIAL ----------
@@ -587,6 +835,19 @@ function renderHistorial(){
   </tr>`).join('');
   document.getElementById('hist-empty').style.display = rows.length? 'none':'block';
   document.getElementById('tbl-historial').style.display = rows.length? 'table':'none';
+
+  const chronological = [...rows].sort((a,b)=> a.anio-b.anio || a.mes-b.mes);
+  const labels = chronological.map(r=>`${MESES[r.mes-1].slice(0,3)} ${r.anio}${fc?'':' ('+r.centro[0].toUpperCase()+')'}`);
+  renderChart('chart-hist-portes', {
+    type:'bar',
+    data:{ labels, datasets:[{ label:'Portes (€)', data: chronological.map(r=>r.portes), backgroundColor:'#f47b20', borderRadius:4 }] },
+    options:{ plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true}} }
+  });
+  renderChart('chart-hist-exp', {
+    type:'line',
+    data:{ labels, datasets:[{ label:'Expediciones', data: chronological.map(r=>r.expediciones), borderColor:'#0a2540', backgroundColor:'#0a2540', tension:.25 }] },
+    options:{ plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true}} }
+  });
 }
 document.querySelectorAll('#tbl-historial th').forEach(th=>{
   th.onclick = ()=>{
@@ -642,6 +903,46 @@ function renderTarifas(){
   }).join('');
 }
 
+// ---------- EVOLUCIÓN MENSUAL (Hospitalet) ----------
+function renderEvolucion(){
+  const rows = histCache.filter(r=>r.centro==='hospitalet').sort((a,b)=>a.anio-b.anio||a.mes-b.mes);
+  const cont = document.getElementById('evolucion-content');
+  const empty = document.getElementById('evolucion-empty');
+  if(!rows.length){ cont.innerHTML=''; empty.style.display='block'; return; }
+  empty.style.display='none';
+
+  const cats = [
+    ['Total Expediciones', r=>r.expediciones],
+    ['Envíos Leotec -> Decathlon', r=> r.detalle?.detalleCats?.['Envíos Leotec -> Decathlon'] ?? '—'],
+    ['Envíos Leotec -> Otros', r=> r.detalle?.detalleCats?.['Envíos Leotec -> Otros'] ?? '—'],
+    ['Recogidas Decathlon -> Leotec', r=> r.detalle?.detalleCats?.['Recogidas Decathlon -> Leotec'] ?? '—'],
+    ['Otras Recogidas', r=> r.detalle?.detalleCats?.['Otras Recogidas (Otros -> Leotec)'] ?? '—'],
+    ['Servicios Pickup (2SHOP)', r=> r.detalle?.n2shop ?? '—'],
+  ];
+  const cols = rows.map(r=>`${MESES[r.mes-1]} ${r.anio}`);
+
+  let html = `<div class="charts-row"><div class="chart-box" style="grid-column:1/-1;"><h4>Total expediciones por mes</h4><canvas id="chart-evolucion"></canvas></div></div>`;
+  html += `<table><thead><tr><th>Categoría</th>${cols.map(c=>`<th class="num">${c}</th>`).join('')}<th class="num">Acumulado</th></tr></thead><tbody>`;
+  for(const [label, fn] of cats){
+    const vals = rows.map(fn);
+    const total = vals.every(v=>typeof v==='number') ? vals.reduce((a,b)=>a+b,0) : '—';
+    html += `<tr><td>${label}</td>${vals.map(v=>`<td class="num">${v}</td>`).join('')}<td class="num"><b>${total}</b></td></tr>`;
+  }
+  html += `</tbody></table>`;
+  cont.innerHTML = html;
+
+  renderChart('chart-evolucion', {
+    type:'bar',
+    data:{ labels: cols, datasets:[
+      {label:'Envíos→Decathlon', data: rows.map(r=>r.detalle?.detalleCats?.['Envíos Leotec -> Decathlon']||0), backgroundColor:'#0a2540'},
+      {label:'Envíos→Otros', data: rows.map(r=>r.detalle?.detalleCats?.['Envíos Leotec -> Otros']||0), backgroundColor:'#f47b20'},
+      {label:'Recogidas Decathlon', data: rows.map(r=>r.detalle?.detalleCats?.['Recogidas Decathlon -> Leotec']||0), backgroundColor:'#4a6b2f'},
+      {label:'Otras recogidas', data: rows.map(r=>r.detalle?.detalleCats?.['Otras Recogidas (Otros -> Leotec)']||0), backgroundColor:'#7c7568'},
+    ]},
+    options:{ scales:{ x:{stacked:true}, y:{stacked:true,beginAtZero:true} }, plugins:{legend:{position:'bottom',labels:{boxWidth:10,font:{size:10}}}} }
+  });
+}
+
 // ---------- TABS ----------
 document.querySelectorAll('.tab').forEach(t=>{
   t.onclick = ()=>{
@@ -650,6 +951,7 @@ document.querySelectorAll('.tab').forEach(t=>{
     t.classList.add('active');
     document.getElementById('panel-'+t.dataset.tab).classList.add('active');
     if(t.dataset.tab==='historial') refrescaHistorial();
+    if(t.dataset.tab==='evolucion') refrescaHistorial().then(renderEvolucion);
     if(t.dataset.tab==='tarifas') renderTarifas();
   };
 });
