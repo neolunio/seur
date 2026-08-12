@@ -126,9 +126,11 @@
   <div class="tabs">
     <div class="tab active" data-tab="subir">Subir factura</div>
     <div class="tab" data-tab="informe">Informe del mes</div>
+    <div class="tab" data-tab="decathlon">Decathlon</div>
     <div class="tab" data-tab="evolucion">Evolución mensual</div>
     <div class="tab" data-tab="historial">Historial</div>
     <div class="tab" data-tab="tarifas">Tarifas</div>
+    <div class="tab" data-tab="envios">Crear envío</div>
   </div>
 
   <div class="panel active" id="panel-subir">
@@ -143,9 +145,21 @@
   </div>
 
   <div class="panel" id="panel-informe">
-    <div id="informe-empty" class="empty card">Sube una factura para ver aquí el informe del mes.</div>
+    <div id="informe-abrir-guardado"></div>
+    <div id="informe-empty" class="empty card">Sube una factura, o abre arriba un informe ya guardado.</div>
     <div id="informe-subtabs" class="subtabs"></div>
     <div id="informe-content"></div>
+  </div>
+
+  <div class="panel" id="panel-decathlon">
+    <div class="card">
+      <div class="flex-between">
+        <h3 style="border:none;margin:0;">Tráfico con Decathlon — evolución mensual (Hospitalet)</h3>
+      </div>
+      <div class="note">Total de envíos hacia centros Decathlon y recogidas desde centros Decathlon, mes a mes, sin desglosar por tienda.</div>
+      <div id="decathlon-content"></div>
+      <div id="decathlon-empty" class="empty" style="display:none;">Todavía no hay facturas de Hospitalet guardadas.</div>
+    </div>
   </div>
 
   <div class="panel" id="panel-evolucion">
@@ -212,6 +226,67 @@
       </table>
       <div id="tarifas-empty" class="empty" style="display:none;">Sube al menos una factura para calcular la comparativa.</div>
       <div id="api-resultado"></div>
+    </div>
+  </div>
+
+  <div class="panel" id="panel-envios">
+    <div class="card">
+      <div class="flex-between">
+        <h3 style="border:none;margin:0;">Crear envío / solicitar recogida</h3>
+      </div>
+      <div class="note" style="color:var(--bad);">⚠️ Esto crea una orden real contra la API de SEUR (usa las credenciales configuradas en Netlify). Antes de usarlo con datos reales, comprueba con tu proveedor que <code>SEUR_API_BASE</code> apunta al entorno que quieres usar (pruebas o producción).</div>
+
+      <h3>Contactos guardados</h3>
+      <div class="row">
+        <select id="sel-contacto" style="flex:1;max-width:320px;"><option value="">— Nuevo destinatario —</option></select>
+        <button class="ghost small" id="btn-borrar-contacto">Eliminar contacto seleccionado</button>
+      </div>
+
+      <h3>Datos del envío</h3>
+      <div class="row" style="margin-bottom:10px;">
+        <select id="env-centro"><option value="hospitalet">Origen: Hospitalet</option><option value="coslada">Origen: Coslada</option></select>
+        <select id="env-tipo"><option value="envio">Envío (entregar a destinatario)</option><option value="recogida">Recogida (recoger de destinatario)</option></select>
+      </div>
+
+      <div class="charts-row">
+        <div class="chart-box">
+          <h4>Remitente (editable)</h4>
+          <input type="text" id="rem-nombre" placeholder="Nombre" />
+          <input type="text" id="rem-telefono" placeholder="Teléfono" style="margin-top:6px;" />
+          <input type="text" id="rem-email" placeholder="Email" style="margin-top:6px;" />
+          <input type="text" id="rem-calle" placeholder="Calle y número" style="margin-top:6px;" />
+          <input type="text" id="rem-poblacion" placeholder="Población" style="margin-top:6px;" />
+          <input type="text" id="rem-cp" placeholder="Código postal" style="margin-top:6px;" />
+        </div>
+        <div class="chart-box">
+          <h4>Destinatario</h4>
+          <input type="text" id="dest-nombre" placeholder="Nombre" />
+          <input type="text" id="dest-telefono" placeholder="Teléfono" style="margin-top:6px;" />
+          <input type="text" id="dest-email" placeholder="Email" style="margin-top:6px;" />
+          <input type="text" id="dest-calle" placeholder="Calle y número" style="margin-top:6px;" />
+          <input type="text" id="dest-poblacion" placeholder="Población" style="margin-top:6px;" />
+          <input type="text" id="dest-cp" placeholder="Código postal" style="margin-top:6px;" />
+          <label class="note" style="display:block;margin-top:8px;"><input type="checkbox" id="chk-guardar-contacto" /> Guardar como contacto para el futuro</label>
+        </div>
+      </div>
+
+      <h3>Bulto</h3>
+      <div class="row" style="margin-bottom:10px;">
+        <input type="number" id="env-peso" placeholder="Peso (kg)" step="0.1" style="max-width:120px;" />
+        <input type="number" id="env-ancho" placeholder="Ancho (cm)" style="max-width:120px;" />
+        <input type="number" id="env-alto" placeholder="Alto (cm)" style="max-width:120px;" />
+        <input type="number" id="env-largo" placeholder="Largo (cm)" style="max-width:120px;" />
+        <input type="text" id="env-referencia" placeholder="Referencia (opcional)" style="flex:1;" />
+      </div>
+      <div class="row" id="row-fecha-recogida" style="display:none;margin-bottom:10px;">
+        <input type="date" id="env-fecha" />
+      </div>
+
+      <div class="row">
+        <button id="btn-crear-envio">Crear envío / recogida</button>
+        <button class="ghost" id="btn-descargar-etiqueta" style="display:none;">Descargar etiqueta (PDF)</button>
+      </div>
+      <div class="note" id="envio-status" style="min-height:16px;"></div>
     </div>
   </div>
 </div>
@@ -404,14 +479,13 @@ async function cargaHistorial(){
   return data;
 }
 
-// ---------- RENDER: INFORME ----------
-function renderInformeCoslada(list, anio, mes){
+// ---------- RENDER: INFORME (basado en "stats" reutilizables/persistibles) ----------
+function computeStatsCoslada(list, anio, mes){
   const total = list.length;
   const bultos = list.reduce((s,e)=>s+e.Bultos,0);
   const peso = list.reduce((s,e)=>s+e.Peso,0);
   const portes = list.reduce((s,e)=>s+e.Portes,0);
   const comb = list.reduce((s,e)=>s+e["Cargo Combustible"],0);
-
   const dest = {};
   for(const e of list){
     const k = e.Destinatario;
@@ -420,61 +494,71 @@ function renderInformeCoslada(list, anio, mes){
   }
   const destRows = Object.entries(dest).map(([k,v])=>({dest:k,...v})).sort((a,b)=>b.portes-a.portes);
   const rp = rangoPesoTabla(list);
+  const ajustes = list.filter(e=>e.Portes===0).length;
+  const maxEnvio = list.reduce((max,e)=> e.Portes>(max?max.Portes:0)?e:max, null);
+  return {centro:'coslada', anio, mes, total, bultos, peso, portes, comb, destRows, rp, ajustes,
+    maxEnvio: maxEnvio?{destinatario:maxEnvio.Destinatario, portes:maxEnvio.Portes, peso:maxEnvio.PesoFacturable}:null};
+}
 
-  let html = `
+function htmlFromStatsCoslada(s){
+  return `
   <div class="kpis">
-    <div class="kpi"><div class="n">${total}</div><div class="l">Expediciones</div></div>
-    <div class="kpi"><div class="n">${bultos}</div><div class="l">Bultos</div></div>
-    <div class="kpi"><div class="n">${num(peso)}</div><div class="l">Peso (Kg)</div></div>
-    <div class="kpi"><div class="n">${euro(portes)}</div><div class="l">Portes</div></div>
-    <div class="kpi"><div class="n">${euro(comb)}</div><div class="l">Combustible</div></div>
-    <div class="kpi"><div class="n">${euro(portes+comb)}</div><div class="l">Total + IVA</div></div>
+    <div class="kpi"><div class="n">${s.total}</div><div class="l">Expediciones</div></div>
+    <div class="kpi"><div class="n">${s.bultos}</div><div class="l">Bultos</div></div>
+    <div class="kpi"><div class="n">${num(s.peso)}</div><div class="l">Peso (Kg)</div></div>
+    <div class="kpi"><div class="n">${euro(s.portes)}</div><div class="l">Portes</div></div>
+    <div class="kpi"><div class="n">${euro(s.comb)}</div><div class="l">Combustible</div></div>
+    <div class="kpi"><div class="n">${euro(s.portes+s.comb)}</div><div class="l">Total + IVA</div></div>
   </div>
   <h3>Desglose por destinatario</h3>
   <table><thead><tr><th>Destinatario</th><th class="num">Nº Envíos</th><th class="num">Bultos</th>
   <th class="num">Kg</th><th class="num">Portes</th><th class="num">Combustible</th></tr></thead><tbody>
-  ${destRows.map(r=>`<tr><td>${r.dest}</td><td class="num">${r.n}</td><td class="num">${r.bultos}</td>
+  ${s.destRows.map(r=>`<tr><td>${r.dest}</td><td class="num">${r.n}</td><td class="num">${r.bultos}</td>
     <td class="num">${num(r.kg)}</td><td class="num">${euro(r.portes)}</td><td class="num">${euro(r.comb)}</td></tr>`).join('')}
-  <tr class="total"><td>TOTAL</td><td class="num">${total}</td><td class="num">${bultos}</td>
-    <td class="num">${num(peso)}</td><td class="num">${euro(portes)}</td><td class="num">${euro(comb)}</td></tr>
+  <tr class="total"><td>TOTAL</td><td class="num">${s.total}</td><td class="num">${s.bultos}</td>
+    <td class="num">${num(s.peso)}</td><td class="num">${euro(s.portes)}</td><td class="num">${euro(s.comb)}</td></tr>
   </tbody></table>
   <h3>Análisis de costes por rango de peso</h3>
   <table><thead><tr><th>Rango de peso</th><th class="num">Envíos</th><th class="num">Coste medio</th><th class="num">Coste frecuente (moda)</th></tr></thead><tbody>
-  ${rp.map(r=>`<tr><td>${r.label}</td><td class="num">${r.n}</td><td class="num">${r.n?euro(r.media):'—'}</td>
+  ${s.rp.map(r=>`<tr><td>${r.label}</td><td class="num">${r.n}</td><td class="num">${r.n?euro(r.media):'—'}</td>
     <td class="num">${r.n?euro(r.modaVal)+' ('+r.modaN+' env.)':'N/A'}</td></tr>`).join('')}
   </tbody></table>`;
+}
 
-  const emailBody = `Hola,
+function emailFromStatsCoslada(s){
+  return `Hola,
 
-A continuación, desglose de la factura emitida en el mes de ${MESES[mes-1].toLowerCase()} por parte de SEUR para servicios prestados en COSLADA.
+A continuación, desglose de la factura emitida en el mes de ${MESES[s.mes-1].toLowerCase()} por parte de SEUR para servicios prestados en COSLADA.
 
-1. Resumen General (${MESES[mes-1]} ${anio})
-Número total de expediciones: ${total}
-Total bultos enviados: ${bultos}
-Total portes: ${euro(portes)}
-Total cargos por combustible: ${euro(comb)}
-Total facturado por envíos: ${euro(portes+comb)} + IVA
-Peso total: ${num(peso)} Kg
+1. Resumen General (${MESES[s.mes-1]} ${s.anio})
+Número total de expediciones: ${s.total}
+Total bultos enviados: ${s.bultos}
+Total portes: ${euro(s.portes)}
+Total cargos por combustible: ${euro(s.comb)}
+Total facturado por envíos: ${euro(s.portes+s.comb)} + IVA
+Peso total: ${num(s.peso)} Kg
 
 2. Desglose por Destinatario
 Destinatario | N Envíos | Bultos | Kg Totales | Portes (€) | Cargos Combustible (€)
-${destRows.map(r=>`${r.dest} | ${r.n} | ${r.bultos} | ${num(r.kg)} | ${euro(r.portes)} | ${euro(r.comb)}`).join('\n')}
-TOTAL | ${total} | ${bultos} | ${num(peso)} | ${euro(portes)} | ${euro(comb)}
+${s.destRows.map(r=>`${r.dest} | ${r.n} | ${r.bultos} | ${num(r.kg)} | ${euro(r.portes)} | ${euro(r.comb)}`).join('\n')}
+TOTAL | ${s.total} | ${s.bultos} | ${num(s.peso)} | ${euro(s.portes)} | ${euro(s.comb)}
 
 3. Análisis de Costes por Rango de Peso
 Rango de Peso | Envíos | Coste Medio (€) | Coste Frecuente (Moda)
-${rp.map(r=>`${r.label} | ${r.n} | ${r.n?euro(r.media):'—'} | ${r.n?euro(r.modaVal)+' ('+r.modaN+' env.)':'N/A'}`).join('\n')}
+${s.rp.map(r=>`${r.label} | ${r.n} | ${r.n?euro(r.media):'—'} | ${r.n?euro(r.modaVal)+' ('+r.modaN+' env.)':'N/A'}`).join('\n')}
 
 Un saludo.`;
-
-  return {html, emailBody, registro:{centro:'coslada', anio, mes, expediciones:total, bultos, peso, portes, combustible:comb, total:portes+comb}};
 }
 
-function renderInformeHospitalet(list, anio, mes){
+function computeStatsHospitalet(list, anio, mes){
   list.forEach(e=>e.Categoria = clasificaHospitalet(e));
   const total = list.length;
-  const cats = ["Envíos Leotec -> Decathlon","Envíos Leotec -> Otros","Recogidas Decathlon -> Leotec","Otras Recogidas (Otros -> Leotec)"];
-  const counts = {}; cats.forEach(c=>counts[c]=list.filter(e=>e.Categoria===c).length);
+  const catLabels = ["Envíos Leotec -> Decathlon","Envíos Leotec -> Otros","Recogidas Decathlon -> Leotec","Otras Recogidas (Otros -> Leotec)"];
+  const catCounts = {};
+  catLabels.forEach(c=>{
+    const sub = list.filter(e=>e.Categoria===c);
+    catCounts[c] = { n: sub.length, portes: sub.reduce((s,e)=>s+e.Portes,0), comb: sub.reduce((s,e)=>s+e["Cargo Combustible"],0) };
+  });
   const n2shop = list.filter(e=>e.Producto==="2SHP").length;
 
   const bultos = list.reduce((s,e)=>s+e.Bultos,0);
@@ -482,77 +566,105 @@ function renderInformeHospitalet(list, anio, mes){
   const portes = list.reduce((s,e)=>s+e.Portes,0);
   const comb = list.reduce((s,e)=>s+e["Cargo Combustible"],0);
   const rp = rangoPesoTabla(list);
+  const ajustes = list.filter(e=>e.Portes===0).length;
+  const maxEnvio = list.reduce((max,e)=> e.Portes>(max?max.Portes:0)?e:max, null);
 
   const envios = topCentros(list, e=>e.Categoria==="Envíos Leotec -> Decathlon", "Destinatario");
   const recogidas = topCentros(list, e=>e.Categoria==="Recogidas Decathlon -> Leotec", "Remitente");
 
-  function tablaCentros(tc){
-    const top10 = tc.arr.slice(0,10), resto = tc.arr.slice(10);
-    let rows = top10.map(r=>`<tr><td>${r.centro}</td><td class="num">${r.n}</td><td class="num">${num(r.kg)}</td>
-      <td class="num">${euro(r.portes)}</td><td class="num">${euro(r.comb)}</td></tr>`).join('');
-    if(resto.length){
-      const rk=resto.reduce((s,r)=>s+r.kg,0), rp_=resto.reduce((s,r)=>s+r.portes,0), rc=resto.reduce((s,r)=>s+r.comb,0), rn=resto.reduce((s,r)=>s+r.n,0);
-      rows += `<tr><td>Otros centros (${resto.length} restantes)</td><td class="num">${rn}</td><td class="num">${num(rk)}</td><td class="num">${euro(rp_)}</td><td class="num">${euro(rc)}</td></tr>`;
-    }
-    const tn=tc.arr.reduce((s,r)=>s+r.n,0), tk=tc.arr.reduce((s,r)=>s+r.kg,0), tp=tc.arr.reduce((s,r)=>s+r.portes,0), tco=tc.arr.reduce((s,r)=>s+r.comb,0);
-    rows += `<tr class="total"><td>TOTAL</td><td class="num">${tn}</td><td class="num">${num(tk)}</td><td class="num">${euro(tp)}</td><td class="num">${euro(tco)}</td></tr>`;
-    return `<table><thead><tr><th>Centro</th><th class="num">Exp.</th><th class="num">Kg</th><th class="num">Portes</th><th class="num">Combustible</th></tr></thead><tbody>${rows}</tbody></table>`;
-  }
+  return {centro:'hospitalet', anio, mes, total, bultos, peso, portes, comb, rp, catCounts, n2shop, envios, recogidas, ajustes,
+    maxEnvio: maxEnvio?{destinatario:maxEnvio.Destinatario, portes:maxEnvio.Portes, peso:maxEnvio.PesoFacturable}:null};
+}
 
-  let html = `
+function tablaCentrosHtml(tc){
+  const top10 = tc.arr.slice(0,10), resto = tc.arr.slice(10);
+  let rows = top10.map(r=>`<tr><td>${r.centro}</td><td class="num">${r.n}</td><td class="num">${num(r.kg)}</td>
+    <td class="num">${euro(r.portes)}</td><td class="num">${euro(r.comb)}</td></tr>`).join('');
+  if(resto.length){
+    const rk=resto.reduce((s,r)=>s+r.kg,0), rp_=resto.reduce((s,r)=>s+r.portes,0), rc=resto.reduce((s,r)=>s+r.comb,0), rn=resto.reduce((s,r)=>s+r.n,0);
+    rows += `<tr><td>Otros centros (${resto.length} restantes)</td><td class="num">${rn}</td><td class="num">${num(rk)}</td><td class="num">${euro(rp_)}</td><td class="num">${euro(rc)}</td></tr>`;
+  }
+  const tn=tc.arr.reduce((s,r)=>s+r.n,0), tk=tc.arr.reduce((s,r)=>s+r.kg,0), tp=tc.arr.reduce((s,r)=>s+r.portes,0), tco=tc.arr.reduce((s,r)=>s+r.comb,0);
+  rows += `<tr class="total"><td>TOTAL</td><td class="num">${tn}</td><td class="num">${num(tk)}</td><td class="num">${euro(tp)}</td><td class="num">${euro(tco)}</td></tr>`;
+  return `<table><thead><tr><th>Centro</th><th class="num">Exp.</th><th class="num">Kg</th><th class="num">Portes</th><th class="num">Combustible</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function htmlFromStatsHospitalet(s){
+  const catLabels = Object.keys(s.catCounts);
+  return `
   <div class="kpis">
-    <div class="kpi"><div class="n">${total}</div><div class="l">Expediciones</div></div>
-    <div class="kpi"><div class="n">${bultos}</div><div class="l">Bultos</div></div>
-    <div class="kpi"><div class="n">${num(peso)}</div><div class="l">Peso (Kg)</div></div>
-    <div class="kpi"><div class="n">${euro(portes)}</div><div class="l">Portes</div></div>
-    <div class="kpi"><div class="n">${euro(comb)}</div><div class="l">Combustible</div></div>
-    <div class="kpi"><div class="n">${euro(portes+comb)}</div><div class="l">Total + IVA</div></div>
+    <div class="kpi"><div class="n">${s.total}</div><div class="l">Expediciones</div></div>
+    <div class="kpi"><div class="n">${s.bultos}</div><div class="l">Bultos</div></div>
+    <div class="kpi"><div class="n">${num(s.peso)}</div><div class="l">Peso (Kg)</div></div>
+    <div class="kpi"><div class="n">${euro(s.portes)}</div><div class="l">Portes</div></div>
+    <div class="kpi"><div class="n">${euro(s.comb)}</div><div class="l">Combustible</div></div>
+    <div class="kpi"><div class="n">${euro(s.portes+s.comb)}</div><div class="l">Total + IVA</div></div>
   </div>
   <h3>Resumen de expediciones</h3>
-  <table><thead><tr><th>Categoría</th><th class="num">Nº</th><th class="num">%</th></tr></thead><tbody>
-  ${cats.map(c=>`<tr><td>${c}</td><td class="num">${counts[c]}</td><td class="num">${num(100*counts[c]/total)}%</td></tr>`).join('')}
-  <tr><td>*Servicios Pickup (2SHOP)</td><td class="num">${n2shop}</td><td class="num">${num(100*n2shop/total)}%</td></tr>
+  <table><thead><tr><th>Categoría</th><th class="num">Nº</th><th class="num">%</th><th class="num">Portes (€)</th></tr></thead><tbody>
+  ${catLabels.map(c=>`<tr><td>${c}</td><td class="num">${s.catCounts[c].n}</td><td class="num">${num(100*s.catCounts[c].n/s.total)}%</td><td class="num">${euro(s.catCounts[c].portes)}</td></tr>`).join('')}
+  <tr><td>*Servicios Pickup (2SHOP)</td><td class="num">${s.n2shop}</td><td class="num">${num(100*s.n2shop/s.total)}%</td><td class="num">—</td></tr>
   </tbody></table>
   <h3>Análisis por rango de peso</h3>
   <table><thead><tr><th>Rango de peso</th><th class="num">Exp.</th><th class="num">Coste medio</th><th class="num">Coste frecuente</th></tr></thead><tbody>
-  ${rp.map(r=>`<tr><td>${r.label}</td><td class="num">${r.n}</td><td class="num">${r.n?euro(r.media):'—'}</td>
+  ${s.rp.map(r=>`<tr><td>${r.label}</td><td class="num">${r.n}</td><td class="num">${r.n?euro(r.media):'—'}</td>
     <td class="num">${r.n?euro(r.modaVal)+' ('+r.modaN+' env.)':'N/A'}</td></tr>`).join('')}
   </tbody></table>
   <h3>Envíos Leotec → Decathlon (top 10 centros)</h3>
-  ${tablaCentros(envios)}
+  ${tablaCentrosHtml(s.envios)}
   <h3>Recogidas Decathlon → Leotec (top 10 centros)</h3>
-  ${tablaCentros(recogidas)}`;
+  ${tablaCentrosHtml(s.recogidas)}`;
+}
 
-  const emailBody = `Hola,
+function emailFromStatsHospitalet(s){
+  const catLabels = Object.keys(s.catCounts);
+  return `Hola,
 
-A continuación, análisis de la factura recibida por parte de SEUR correspondiente al pasado mes de ${MESES[mes-1].toLowerCase()} de ${anio} para el centro de trabajo de Hospitalet de Llobregat.
+A continuación, análisis de la factura recibida por parte de SEUR correspondiente al pasado mes de ${MESES[s.mes-1].toLowerCase()} de ${s.anio} para el centro de trabajo de Hospitalet de Llobregat.
 
 Resumen de expediciones totales:
-Total Expediciones: ${total}
-${cats.map(c=>`${c}: ${counts[c]} (${num(100*counts[c]/total)}%)`).join('\n')}
-*Servicios Pickup (2SHOP): ${n2shop} (${num(100*n2shop/total)}%)
+Total Expediciones: ${s.total}
+${catLabels.map(c=>`${c}: ${s.catCounts[c].n} (${num(100*s.catCounts[c].n/s.total)}%)`).join('\n')}
+*Servicios Pickup (2SHOP): ${s.n2shop} (${num(100*s.n2shop/s.total)}%)
 
 Análisis por rango de peso:
 Rango de Peso | Expediciones | Coste Medio (€) | Coste Frecuente (€)
-${rp.map(r=>`${r.label} | ${r.n} | ${r.n?euro(r.media):'—'} | ${r.n?euro(r.modaVal)+' ('+r.modaN+' env.)':'N/A'}`).join('\n')}
+${s.rp.map(r=>`${r.label} | ${r.n} | ${r.n?euro(r.media):'—'} | ${r.n?euro(r.modaVal)+' ('+r.modaN+' env.)':'N/A'}`).join('\n')}
 
 Totales del Periodo
-Bultos: ${bultos}
-Peso: ${num(peso)} kg
-Portes: ${euro(portes)}
-Cargo Combustible: ${euro(comb)}
+Bultos: ${s.bultos}
+Peso: ${num(s.peso)} kg
+Portes: ${euro(s.portes)}
+Cargo Combustible: ${euro(s.comb)}
 
 2. Desglose por Centros Decathlon
-1. Envíos desde Leotec a centros Decathlon: ${envios.total} expediciones en ${envios.ncentros} centros.
-${envios.arr.slice(0,10).map(r=>`${r.centro}: ${r.n} exp. — ${euro(r.portes)}`).join('\n')}
+1. Envíos desde Leotec a centros Decathlon: ${s.envios.total} expediciones en ${s.envios.ncentros} centros.
+${s.envios.arr.slice(0,10).map(r=>`${r.centro}: ${r.n} exp. — ${euro(r.portes)}`).join('\n')}
 
-2. Recogidas desde centros Decathlon hacia Leotec: ${recogidas.total} expediciones en ${recogidas.ncentros} centros.
-${recogidas.arr.slice(0,10).map(r=>`${r.centro}: ${r.n} exp. — ${euro(r.portes)}`).join('\n')}
+2. Recogidas desde centros Decathlon hacia Leotec: ${s.recogidas.total} expediciones en ${s.recogidas.ncentros} centros.
+${s.recogidas.arr.slice(0,10).map(r=>`${r.centro}: ${r.n} exp. — ${euro(r.portes)}`).join('\n')}
 
 Un saludo.`;
+}
 
-  return {html, emailBody, registro:{centro:'hospitalet', anio, mes, expediciones:total, bultos, peso, portes, combustible:comb, total:portes+comb,
-    detalleCats:counts, n2shop}};
+function renderInformeCoslada(list, anio, mes){
+  const stats = computeStatsCoslada(list, anio, mes);
+  return {
+    html: htmlFromStatsCoslada(stats),
+    emailBody: emailFromStatsCoslada(stats),
+    registro: {centro:'coslada', anio, mes, expediciones:stats.total, bultos:stats.bultos, peso:stats.peso,
+      portes:stats.portes, combustible:stats.comb, total:stats.portes+stats.comb, detalle: stats}
+  };
+}
+
+function renderInformeHospitalet(list, anio, mes){
+  const stats = computeStatsHospitalet(list, anio, mes);
+  return {
+    html: htmlFromStatsHospitalet(stats),
+    emailBody: emailFromStatsHospitalet(stats),
+    registro: {centro:'hospitalet', anio, mes, expediciones:stats.total, bultos:stats.bultos, peso:stats.peso,
+      portes:stats.portes, combustible:stats.comb, total:stats.portes+stats.comb, detalle: stats}
+  };
 }
 
 // ---------- MAIN FLOW ----------
@@ -609,33 +721,31 @@ function destinatariosChartConfig(labels, data){
 }
 
 // ---------- INCIDENCIAS ----------
-function detectaIncidencias(list, registroActual, registroAnterior){
+function detectaIncidenciasStats(stats, registroAnterior){
   const inc = [];
-  const ajustes = list.filter(e=>e.Portes===0);
-  if(ajustes.length){
-    inc.push(`${ajustes.length} línea(s) sin coste de portes (posibles ajustes o diferencias de peso) — revisar si corresponde.`);
+  if(stats.ajustes){
+    inc.push(`${stats.ajustes} línea(s) sin coste de portes (posibles ajustes o diferencias de peso) — revisar si corresponde.`);
   }
   if(registroAnterior){
-    const difPortes = registroActual.portes - registroAnterior.portes;
+    const difPortes = stats.portes - registroAnterior.portes;
     const pctPortes = registroAnterior.portes ? (100*difPortes/registroAnterior.portes) : 0;
     if(Math.abs(pctPortes) >= 10){
-      inc.push(`Los portes ${difPortes>=0?'han subido':'han bajado'} un ${Math.abs(pctPortes).toFixed(1)}% respecto al mes anterior (${euro(registroAnterior.portes)} → ${euro(registroActual.portes)}).`);
+      inc.push(`Los portes ${difPortes>=0?'han subido':'han bajado'} un ${Math.abs(pctPortes).toFixed(1)}% respecto al mes anterior (${euro(registroAnterior.portes)} → ${euro(stats.portes)}).`);
     }
-    const difExp = registroActual.expediciones - registroAnterior.expediciones;
+    const difExp = stats.total - registroAnterior.expediciones;
     const pctExp = registroAnterior.expediciones ? (100*difExp/registroAnterior.expediciones) : 0;
     if(Math.abs(pctExp) >= 15){
-      inc.push(`El número de expediciones ${difExp>=0?'ha subido':'ha bajado'} un ${Math.abs(pctExp).toFixed(1)}% respecto al mes anterior (${registroAnterior.expediciones} → ${registroActual.expediciones}).`);
+      inc.push(`El número de expediciones ${difExp>=0?'ha subido':'ha bajado'} un ${Math.abs(pctExp).toFixed(1)}% respecto al mes anterior (${registroAnterior.expediciones} → ${stats.total}).`);
     }
   }
-  const maxEnvio = list.reduce((max,e)=> e.Portes>(max?max.Portes:0) ? e : max, null);
-  if(maxEnvio){
-    inc.push(`El envío más caro del periodo es a ${maxEnvio.Destinatario} (${euro(maxEnvio.Portes)}, ${num(maxEnvio.PesoFacturable)} Kg).`);
+  if(stats.maxEnvio){
+    inc.push(`El envío más caro del periodo es a ${stats.maxEnvio.destinatario} (${euro(stats.maxEnvio.portes)}, ${num(stats.maxEnvio.peso)} Kg).`);
   }
   return inc;
 }
 
-// ---------- INFORMES (multi-factura) ----------
-let informesCargados = {}; // key -> {centro, anio, mes, list, res}
+// ---------- INFORMES (multi-factura + reapertura desde histórico) ----------
+let informesCargados = {}; // key -> {centro, anio, mes, stats, res}
 let activeInformeKey = null;
 let cacheEnvios = []; // para tabla de tarifas: acumula todos los envíos de todas las facturas cargadas esta sesión
 
@@ -649,13 +759,29 @@ async function procesaArchivo(file){
 
   const res = centro==='coslada' ? renderInformeCoslada(list, anio, mes) : renderInformeHospitalet(list, anio, mes);
   res.registro.email_borrador = res.emailBody;
-  res.registro.detalle = res.registro.detalleCats ? {detalleCats: res.registro.detalleCats, n2shop: res.registro.n2shop} : null;
   await guardaRegistro(res.registro);
 
   const key = `${centro}-${anio}-${String(mes).padStart(2,'0')}`;
-  informesCargados[key] = {centro, anio, mes, list, res};
+  informesCargados[key] = {centro, anio, mes, stats: res.registro.detalle, res};
   activeInformeKey = key;
+  await refrescaHistorial();
   return {centro, anio, mes, key};
+}
+
+function abrirInformeDesdeHistorial(registroRow){
+  if(!registroRow || !registroRow.detalle || !registroRow.detalle.rp){
+    alert('Esta factura se guardó con una versión antigua del panel y no tiene el detalle completo guardado. Vuelve a subir su Excel una vez para regenerarlo con todos los datos — a partir de ahí quedará disponible sin volver a subir nada.');
+    return;
+  }
+  const stats = registroRow.detalle;
+  const centro = registroRow.centro, anio = registroRow.anio, mes = registroRow.mes;
+  const res = centro==='coslada'
+    ? { html: htmlFromStatsCoslada(stats), emailBody: registroRow.email_borrador || emailFromStatsCoslada(stats), registro: registroRow }
+    : { html: htmlFromStatsHospitalet(stats), emailBody: registroRow.email_borrador || emailFromStatsHospitalet(stats), registro: registroRow };
+  const key = `${centro}-${anio}-${String(mes).padStart(2,'0')}`;
+  informesCargados[key] = {centro, anio, mes, stats, res};
+  activeInformeKey = key;
+  mostrarInforme();
 }
 
 function renderInformeSubtabs(){
@@ -669,6 +795,28 @@ function renderInformeSubtabs(){
   cont.querySelectorAll('.subtab').forEach(el=>{
     el.onclick = ()=>{ activeInformeKey = el.dataset.key; mostrarInforme(); };
   });
+}
+
+function renderAbrirGuardadoSelector(){
+  const cont = document.getElementById('informe-abrir-guardado');
+  if(!cont) return;
+  if(!histCache.length){ cont.innerHTML = ''; return; }
+  const opciones = histCache.map(r=>{
+    const key = `${r.centro}-${r.anio}-${String(r.mes).padStart(2,'0')}`;
+    return `<option value="${key}">${r.centro} — ${MESES[r.mes-1]} ${r.anio}</option>`;
+  }).join('');
+  cont.innerHTML = `
+    <div class="row" style="margin-bottom:14px;">
+      <select id="sel-abrir-guardado" style="flex:1;max-width:280px;"><option value="">Abrir un informe ya guardado...</option>${opciones}</select>
+      <button class="ghost small" id="btn-abrir-guardado">Abrir</button>
+    </div>`;
+  document.getElementById('btn-abrir-guardado').onclick = ()=>{
+    const key = document.getElementById('sel-abrir-guardado').value;
+    if(!key) return;
+    const [centro, anio, mes] = [key.split('-')[0], parseInt(key.split('-')[1]), parseInt(key.split('-')[2])];
+    const row = histCache.find(r=>r.centro===centro && r.anio===anio && r.mes===mes);
+    abrirInformeDesdeHistorial(row);
+  };
 }
 
 async function mostrarInforme(){
@@ -700,18 +848,14 @@ async function mostrarInforme(){
       <div id="email-html-preview" class="email-preview" style="display:none;margin-top:12px;"></div>
     </div>`;
 
-  const rp = rangoPesoTabla(inf.list);
-  renderChart('chart-rango', rangoPesoChartConfig(rp));
+  renderChart('chart-rango', rangoPesoChartConfig(inf.stats.rp));
   if(inf.centro==='hospitalet'){
-    inf.list.forEach(e=>e.Categoria = e.Categoria || clasificaHospitalet(e));
-    const cats = ["Envíos Leotec -> Decathlon","Envíos Leotec -> Otros","Recogidas Decathlon -> Leotec","Otras Recogidas (Otros -> Leotec)"];
-    const counts = cats.map(c=> inf.list.filter(e=>e.Categoria===c).length);
+    const labels = Object.keys(inf.stats.catCounts);
+    const counts = labels.map(l=>inf.stats.catCounts[l].n);
     renderChart('chart-cat', categoriasChartConfig(['Envíos→Decathlon','Envíos→Otros','Recogidas Decathlon','Otras recogidas'], counts));
   } else {
-    const porDest = {};
-    inf.list.forEach(e=>{ porDest[e.Destinatario]=(porDest[e.Destinatario]||0)+e.Portes; });
-    const top = Object.entries(porDest).sort((a,b)=>b[1]-a[1]).slice(0,8);
-    renderChart('chart-cat', destinatariosChartConfig(top.map(t=>t[0]), top.map(t=>t[1])));
+    const top = inf.stats.destRows.slice(0,8);
+    renderChart('chart-cat', destinatariosChartConfig(top.map(t=>t.dest), top.map(t=>t.portes)));
   }
 
   document.getElementById('btn-copy-email').onclick = ()=>{
@@ -754,21 +898,18 @@ function mesAnteriorDe(centro, anio, mes){
 }
 
 async function construyeEmailHTML(inf, registroAnterior){
-  const {centro, anio, mes, list, res} = inf;
-  const rp = rangoPesoTabla(list);
-  const incidencias = detectaIncidencias(list, res.registro, registroAnterior);
+  const {centro, anio, mes, stats, res} = inf;
+  const incidencias = detectaIncidenciasStats(stats, registroAnterior);
 
-  const chartRango = await renderOffscreenChart(rangoPesoChartConfig(rp), 480, 260);
+  const chartRango = await renderOffscreenChart(rangoPesoChartConfig(stats.rp), 480, 260);
   let chartCat;
   if(centro==='hospitalet'){
-    const cats = ["Envíos Leotec -> Decathlon","Envíos Leotec -> Otros","Recogidas Decathlon -> Leotec","Otras Recogidas (Otros -> Leotec)"];
-    const counts = cats.map(c=> list.filter(e=>e.Categoria===c).length);
+    const labels = Object.keys(stats.catCounts);
+    const counts = labels.map(l=>stats.catCounts[l].n);
     chartCat = await renderOffscreenChart(categoriasChartConfig(['Envíos→Decathlon','Envíos→Otros','Recogidas Decathlon','Otras recogidas'], counts), 420, 260);
   } else {
-    const porDest = {};
-    list.forEach(e=>{ porDest[e.Destinatario]=(porDest[e.Destinatario]||0)+e.Portes; });
-    const top = Object.entries(porDest).sort((a,b)=>b[1]-a[1]).slice(0,8);
-    chartCat = await renderOffscreenChart(destinatariosChartConfig(top.map(t=>t[0]), top.map(t=>t[1])), 420, 260);
+    const top = stats.destRows.slice(0,8);
+    chartCat = await renderOffscreenChart(destinatariosChartConfig(top.map(t=>t.dest), top.map(t=>t.portes)), 420, 260);
   }
 
   const kpis = [
@@ -823,6 +964,7 @@ async function refrescaHistorial(){
   const selAnio = document.getElementById('f-anio');
   selAnio.innerHTML = '<option value="">Todos los años</option>' + anios.map(a=>`<option value="${a}">${a}</option>`).join('');
   renderHistorial();
+  renderAbrirGuardadoSelector();
 }
 function renderHistorial(){
   const fc = document.getElementById('f-centro').value;
@@ -954,6 +1096,207 @@ function renderEvolucion(){
   });
 }
 
+// ---------- DECATHLON (agregado mensual, sin desglose por centro) ----------
+function renderDecathlon(){
+  const rows = histCache.filter(r=>r.centro==='hospitalet' && r.detalle && r.detalle.catCounts).sort((a,b)=>a.anio-b.anio||a.mes-b.mes);
+  const cont = document.getElementById('decathlon-content');
+  const empty = document.getElementById('decathlon-empty');
+  if(!rows.length){ cont.innerHTML=''; empty.style.display='block'; return; }
+  empty.style.display='none';
+
+  const envios = rows.map(r=>r.detalle.catCounts['Envíos Leotec -> Decathlon'] || {n:0,portes:0,comb:0});
+  const recogidas = rows.map(r=>r.detalle.catCounts['Recogidas Decathlon -> Leotec'] || {n:0,portes:0,comb:0});
+  const cols = rows.map(r=>`${MESES[r.mes-1].slice(0,3)} ${r.anio}`);
+
+  const totEnviosN = envios.reduce((s,e)=>s+e.n,0), totEnviosE = envios.reduce((s,e)=>s+e.portes,0);
+  const totRecN = recogidas.reduce((s,e)=>s+e.n,0), totRecE = recogidas.reduce((s,e)=>s+e.portes,0);
+
+  cont.innerHTML = `
+    <div class="kpis">
+      <div class="kpi"><div class="n">${totEnviosN}</div><div class="l">Envíos a Decathlon (acum.)</div></div>
+      <div class="kpi"><div class="n">${euro(totEnviosE)}</div><div class="l">Portes envíos (acum.)</div></div>
+      <div class="kpi"><div class="n">${totRecN}</div><div class="l">Recogidas de Decathlon (acum.)</div></div>
+      <div class="kpi"><div class="n">${euro(totRecE)}</div><div class="l">Portes recogidas (acum.)</div></div>
+    </div>
+    <div class="charts-row">
+      <div class="chart-box"><h4>Nº de expediciones por mes</h4><canvas id="chart-decathlon-n"></canvas></div>
+      <div class="chart-box"><h4>Portes (€) por mes</h4><canvas id="chart-decathlon-eur"></canvas></div>
+    </div>
+    <table><thead><tr><th>Mes</th><th class="num">Envíos (nº)</th><th class="num">Envíos (€)</th>
+      <th class="num">Recogidas (nº)</th><th class="num">Recogidas (€)</th></tr></thead><tbody>
+      ${rows.map((r,i)=>`<tr><td>${cols[i]}</td><td class="num">${envios[i].n}</td><td class="num">${euro(envios[i].portes)}</td>
+        <td class="num">${recogidas[i].n}</td><td class="num">${euro(recogidas[i].portes)}</td></tr>`).join('')}
+      <tr class="total"><td>TOTAL</td><td class="num">${totEnviosN}</td><td class="num">${euro(totEnviosE)}</td>
+        <td class="num">${totRecN}</td><td class="num">${euro(totRecE)}</td></tr>
+    </tbody></table>`;
+
+  renderChart('chart-decathlon-n', {
+    type:'line',
+    data:{ labels: cols, datasets:[
+      {label:'Envíos a Decathlon', data: envios.map(e=>e.n), borderColor:'#0a2540', backgroundColor:'#0a2540', tension:.25},
+      {label:'Recogidas de Decathlon', data: recogidas.map(e=>e.n), borderColor:'#f47b20', backgroundColor:'#f47b20', tension:.25},
+    ]},
+    options:{ scales:{y:{beginAtZero:true}}, plugins:{legend:{position:'bottom',labels:{boxWidth:10,font:{size:10}}}} }
+  });
+  renderChart('chart-decathlon-eur', {
+    type:'bar',
+    data:{ labels: cols, datasets:[
+      {label:'Envíos (€)', data: envios.map(e=>e.portes), backgroundColor:'#0a2540', borderRadius:4},
+      {label:'Recogidas (€)', data: recogidas.map(e=>e.portes), backgroundColor:'#f47b20', borderRadius:4},
+    ]},
+    options:{ scales:{y:{beginAtZero:true}}, plugins:{legend:{position:'bottom',labels:{boxWidth:10,font:{size:10}}}} }
+  });
+}
+
+// ---------- CREAR ENVÍOS / RECOGIDAS (API SEUR) ----------
+const SENDER_DEFAULTS = {
+  coslada: { nombre:'LEOTEC DIGITAL LIFESTYLE SL', telefono:'', email:'soporte@leotec.com', calle:'C/ Luxemburgo 3', poblacion:'COSLADA', cp:'28821' },
+  hospitalet: { nombre:'LEOTEC DIGITAL LIFESTYLE SL', telefono:'934709287', email:'soporte@leotec.com', calle:"Avd. Josep Tarradellas i Joan 259 Bajo", poblacion:"L'HOSPITALET DE LLOBREGAT", cp:'08901' },
+};
+function aplicaRemitentePorCentro(){
+  const centro = document.getElementById('env-centro').value;
+  const d = SENDER_DEFAULTS[centro];
+  document.getElementById('rem-nombre').value = d.nombre;
+  document.getElementById('rem-telefono').value = d.telefono;
+  document.getElementById('rem-email').value = d.email;
+  document.getElementById('rem-calle').value = d.calle;
+  document.getElementById('rem-poblacion').value = d.poblacion;
+  document.getElementById('rem-cp').value = d.cp;
+}
+document.getElementById('env-centro').addEventListener('change', aplicaRemitentePorCentro);
+document.getElementById('env-tipo').addEventListener('change', (e)=>{
+  document.getElementById('row-fecha-recogida').style.display = e.target.value==='recogida' ? 'flex' : 'none';
+});
+
+let contactosCache = [];
+async function cargaContactos(){
+  aplicaRemitentePorCentro();
+  const maniana = new Date(Date.now()+86400000).toISOString().slice(0,10);
+  document.getElementById('env-fecha').value = maniana;
+  const { data, error } = await sb.from('contactos').select('*').order('nombre');
+  if(error){ console.error(error); return; }
+  contactosCache = data || [];
+  const sel = document.getElementById('sel-contacto');
+  sel.innerHTML = '<option value="">— Nuevo destinatario —</option>' + contactosCache.map(c=>`<option value="${c.id}">${c.nombre}</option>`).join('');
+}
+document.getElementById('sel-contacto').addEventListener('change', (e)=>{
+  const c = contactosCache.find(x=>x.id===e.target.value);
+  if(!c) return;
+  document.getElementById('dest-nombre').value = c.nombre||'';
+  document.getElementById('dest-telefono').value = c.telefono||'';
+  document.getElementById('dest-email').value = c.email||'';
+  document.getElementById('dest-calle').value = c.calle||'';
+  document.getElementById('dest-poblacion').value = c.poblacion||'';
+  document.getElementById('dest-cp').value = c.cp||'';
+});
+document.getElementById('btn-borrar-contacto').onclick = async ()=>{
+  const id = document.getElementById('sel-contacto').value;
+  if(!id) return;
+  if(!confirm('¿Eliminar este contacto guardado?')) return;
+  await sb.from('contactos').delete().eq('id', id);
+  await cargaContactos();
+};
+
+let ultimoShipmentCode = null, ultimoEntity = null;
+document.getElementById('btn-crear-envio').onclick = async ()=>{
+  const status = document.getElementById('envio-status');
+  const btn = document.getElementById('btn-crear-envio');
+  const centro = document.getElementById('env-centro').value;
+  const tipo = document.getElementById('env-tipo').value;
+  const ccc = CCC_POR_CENTRO[centro];
+  const ref = document.getElementById('env-referencia').value.trim() || `LEOTEC-${Date.now()}`;
+  const peso = parseFloat(document.getElementById('env-peso').value);
+  const ancho = parseFloat(document.getElementById('env-ancho').value) || 10;
+  const alto = parseFloat(document.getElementById('env-alto').value) || 10;
+  const largo = parseFloat(document.getElementById('env-largo').value) || 10;
+
+  const remitente = {
+    nombre: document.getElementById('rem-nombre').value, telefono: document.getElementById('rem-telefono').value,
+    email: document.getElementById('rem-email').value, calle: document.getElementById('rem-calle').value,
+    poblacion: document.getElementById('rem-poblacion').value, cp: document.getElementById('rem-cp').value,
+  };
+  const destinatario = {
+    nombre: document.getElementById('dest-nombre').value, telefono: document.getElementById('dest-telefono').value,
+    email: document.getElementById('dest-email').value, calle: document.getElementById('dest-calle').value,
+    poblacion: document.getElementById('dest-poblacion').value, cp: document.getElementById('dest-cp').value,
+  };
+  if(!peso || !destinatario.nombre || !destinatario.calle || !destinatario.poblacion || !destinatario.cp){
+    status.style.color='var(--bad)'; status.textContent = 'Faltan datos: peso y los datos del destinatario (nombre, calle, población, CP) son obligatorios.';
+    return;
+  }
+
+  btn.disabled = true; status.style.color='var(--muted)'; status.textContent = 'Enviando a SEUR...';
+  document.getElementById('btn-descargar-etiqueta').style.display = 'none';
+
+  try{
+    let action, payload;
+    if(tipo==='envio'){
+      action = 'create_shipment';
+      payload = {
+        serviceCode: 1, productCode: 2, charges: 'P', reference: ref,
+        sender: { name: remitente.nombre, email: remitente.email, phone: remitente.telefono, accountNumber: ccc, contactName: remitente.nombre,
+          address: { streetName: remitente.calle, cityName: remitente.poblacion, postalCode: remitente.cp, country: 'ES' } },
+        receiver: { name: destinatario.nombre, email: destinatario.email, phone: destinatario.telefono, contactName: destinatario.nombre,
+          address: { streetName: destinatario.calle, cityName: destinatario.poblacion, postalCode: destinatario.cp, country: 'ES' } },
+        parcels: [{ weight: peso, width: ancho, height: alto, length: largo }],
+      };
+    } else {
+      action = 'create_collection';
+      payload = {
+        serviceCode: 1, productCode: 2, ref, collectionDate: document.getElementById('env-fecha').value, label: false, payer: 'ORD',
+        customer: { accountNumber: ccc, name: remitente.nombre, idNumber: '', phone: remitente.telefono, email: remitente.email },
+        sender: { name: destinatario.nombre, phone: destinatario.telefono, email: destinatario.email, contactName: destinatario.nombre,
+          address: { streetName: destinatario.calle, cityName: destinatario.poblacion, postalCode: destinatario.cp, country: 'ES' } },
+        parcels: [{ weight: peso, width: ancho, height: alto, length: largo, packReference: ref }],
+        declaredValue: 0, insuredValue: 0, cashOnDeliveryValue: 0,
+      };
+    }
+
+    const resp = await fetch('/api/seur-shipments', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({action, payload}) });
+    const json = await resp.json();
+    if(!resp.ok) throw new Error(json.error || 'Error desconocido');
+
+    if(tipo==='envio'){
+      ultimoShipmentCode = json.data.shipmentCode; ultimoEntity = 'EXPEDITIONS';
+      status.style.color='var(--ok)'; status.textContent = `Envío creado correctamente. Código: ${ultimoShipmentCode}`;
+    } else {
+      ultimoShipmentCode = json.data.collectionRef; ultimoEntity = 'COLLECTIONS';
+      status.style.color='var(--ok)'; status.textContent = `Recogida solicitada correctamente. Referencia: ${ultimoShipmentCode}`;
+    }
+    document.getElementById('btn-descargar-etiqueta').style.display = 'inline-block';
+
+    if(document.getElementById('chk-guardar-contacto').checked){
+      const { data: { user } } = await sb.auth.getUser();
+      await sb.from('contactos').insert({ user_id: user.id, nombre: destinatario.nombre, telefono: destinatario.telefono,
+        email: destinatario.email, calle: destinatario.calle, poblacion: destinatario.poblacion, cp: destinatario.cp, pais: 'ES' });
+      await cargaContactos();
+    }
+  }catch(err){
+    status.style.color='var(--bad)'; status.textContent = 'Error: '+err.message;
+  }finally{
+    btn.disabled = false;
+  }
+};
+
+document.getElementById('btn-descargar-etiqueta').onclick = async ()=>{
+  const status = document.getElementById('envio-status');
+  if(!ultimoShipmentCode) return;
+  try{
+    const resp = await fetch('/api/seur-shipments', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ action:'get_label', payload:{ code: ultimoShipmentCode, type:'PDF', entity: ultimoEntity } }) });
+    const json = await resp.json();
+    if(!resp.ok) throw new Error(json.error || 'Error desconocido');
+    const b64 = json.data[0].pdf;
+    const bytes = atob(b64);
+    const arr = new Uint8Array(bytes.length);
+    for(let i=0;i<bytes.length;i++) arr[i] = bytes.charCodeAt(i);
+    const blob = new Blob([arr], {type:'application/pdf'});
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `etiqueta_${ultimoShipmentCode}.pdf`; a.click();
+  }catch(err){
+    status.style.color='var(--bad)'; status.textContent = 'Error al descargar la etiqueta: '+err.message;
+  }
+};
+
 // ---------- TABS ----------
 document.querySelectorAll('.tab').forEach(t=>{
   t.onclick = ()=>{
@@ -963,7 +1306,9 @@ document.querySelectorAll('.tab').forEach(t=>{
     document.getElementById('panel-'+t.dataset.tab).classList.add('active');
     if(t.dataset.tab==='historial') refrescaHistorial();
     if(t.dataset.tab==='evolucion') refrescaHistorial().then(renderEvolucion);
+    if(t.dataset.tab==='decathlon') refrescaHistorial().then(renderDecathlon);
     if(t.dataset.tab==='tarifas') renderTarifas();
+    if(t.dataset.tab==='envios') cargaContactos();
   };
 });
 
