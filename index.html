@@ -87,6 +87,10 @@
   .email-preview{background:#fff;border:1px solid var(--line);border-radius:10px;overflow:hidden;}
   .email-preview-inner{padding:0;}
   .email-actions{display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;}
+  .modal-overlay{position:fixed;inset:0;background:rgba(10,20,30,.55);z-index:100;
+    display:flex;align-items:center;justify-content:center;padding:20px;}
+  .modal-card{background:var(--paper);border-radius:12px;max-width:720px;width:100%;
+    max-height:88vh;overflow-y:auto;padding:22px 26px;box-shadow:0 20px 60px rgba(0,0,0,.35);}
 </style>
 </head>
 <body>
@@ -240,7 +244,9 @@
       <div class="row">
         <select id="sel-contacto" style="flex:1;max-width:320px;"><option value="">— Nuevo destinatario —</option></select>
         <button class="ghost small" id="btn-borrar-contacto">Eliminar contacto seleccionado</button>
+        <button class="small" id="btn-abrir-contactos">Gestionar contactos (añadir / importar)</button>
       </div>
+      <div class="note">Cualquier contacto guardado puede usarse tanto como remitente como destinatario — no dependen del centro. Útil por ejemplo para recogidas o envíos entre particulares, no solo desde Coslada/Hospitalet.</div>
 
       <h3>Datos del envío</h3>
       <div class="row" style="margin-bottom:10px;gap:16px;">
@@ -312,6 +318,47 @@
   </div>
 </div>
 </div><!-- /#app -->
+
+<div id="modal-overlay" class="modal-overlay" style="display:none;">
+  <div class="modal-card">
+    <div class="flex-between" style="margin-bottom:14px;">
+      <h3 style="margin:0;border:none;">Gestionar contactos</h3>
+      <button class="ghost small" id="btn-cerrar-contactos">Cerrar ✕</button>
+    </div>
+
+    <h3>Añadir contacto manualmente</h3>
+    <div class="charts-row">
+      <div>
+        <input type="text" id="mc-nombre" placeholder="Nombre *" />
+        <input type="text" id="mc-nif" placeholder="NIF (opcional)" style="margin-top:6px;" />
+        <input type="text" id="mc-telefono" placeholder="Teléfono" style="margin-top:6px;" />
+        <input type="text" id="mc-email" placeholder="Email" style="margin-top:6px;" />
+      </div>
+      <div>
+        <input type="text" id="mc-calle" placeholder="Calle y número *" />
+        <input type="text" id="mc-poblacion" placeholder="Población *" style="margin-top:6px;" />
+        <input type="text" id="mc-cp" placeholder="Código postal *" style="margin-top:6px;" />
+        <input type="text" id="mc-notas" placeholder="Notas (opcional)" style="margin-top:6px;" />
+      </div>
+    </div>
+    <button id="btn-guardar-contacto-manual" style="margin-top:10px;">Añadir contacto</button>
+    <div class="note" id="mc-status" style="min-height:16px;"></div>
+
+    <h3>Importar desde CSV o Excel</h3>
+    <div class="note">La primera fila debe tener encabezados. Reconoce columnas como: nombre, nif, telefono, email, calle/dirección, poblacion/ciudad, cp/código postal, pais, notas (en cualquier orden, mayúsculas/minúsculas indiferente).</div>
+    <div class="row" style="margin-top:8px;">
+      <input type="file" id="mc-import-file" accept=".csv,.xlsx,.xls" />
+      <button class="ghost small" id="btn-importar-contactos">Importar</button>
+    </div>
+    <div class="note" id="mc-import-status" style="min-height:16px;"></div>
+
+    <h3>Contactos guardados (<span id="mc-total">0</span>)</h3>
+    <div style="max-height:280px;overflow-y:auto;">
+      <table><thead><tr><th>Nombre</th><th>Población</th><th>CP</th><th>Teléfono</th><th></th></tr></thead>
+      <tbody id="mc-tabla"></tbody></table>
+    </div>
+  </div>
+</div>
 
 <script>
 // ---------- CONFIGURA AQUÍ TU PROYECTO SUPABASE ----------
@@ -1229,7 +1276,104 @@ async function cargaContactos(){
   const opciones = contactosCache.map(c=>`<option value="${c.id}">${c.nombre}</option>`).join('');
   document.getElementById('sel-contacto').innerHTML = '<option value="">— Nuevo destinatario —</option>' + opciones;
   document.getElementById('sel-remitente').innerHTML = '<option value="">— Centro seleccionado arriba (por defecto) —</option>' + opciones;
+  renderTablaContactos();
 }
+
+// ---------- MODAL: GESTIONAR CONTACTOS (añadir manual + importar CSV/XLSX) ----------
+function renderTablaContactos(){
+  document.getElementById('mc-total').textContent = contactosCache.length;
+  document.getElementById('mc-tabla').innerHTML = contactosCache.map(c=>`
+    <tr><td>${c.nombre}</td><td>${c.poblacion||''}</td><td>${c.cp||''}</td><td>${c.telefono||''}</td>
+    <td><button class="ghost small" data-id="${c.id}">Eliminar</button></td></tr>`).join('');
+  document.querySelectorAll('#mc-tabla button[data-id]').forEach(btn=>{
+    btn.onclick = async ()=>{
+      if(!confirm('¿Eliminar este contacto?')) return;
+      await sb.from('contactos').delete().eq('id', btn.dataset.id);
+      await cargaContactos();
+    };
+  });
+}
+document.getElementById('btn-abrir-contactos').onclick = ()=>{
+  document.getElementById('modal-overlay').style.display = 'flex';
+  renderTablaContactos();
+};
+document.getElementById('btn-cerrar-contactos').onclick = ()=>{
+  document.getElementById('modal-overlay').style.display = 'none';
+};
+document.getElementById('modal-overlay').addEventListener('click', (e)=>{
+  if(e.target.id === 'modal-overlay') document.getElementById('modal-overlay').style.display = 'none';
+});
+
+document.getElementById('btn-guardar-contacto-manual').onclick = async ()=>{
+  const status = document.getElementById('mc-status');
+  const nombre = document.getElementById('mc-nombre').value.trim();
+  const calle = document.getElementById('mc-calle').value.trim();
+  const poblacion = document.getElementById('mc-poblacion').value.trim();
+  const cp = document.getElementById('mc-cp').value.trim();
+  if(!nombre || !calle || !poblacion || !cp){
+    status.style.color='var(--bad)'; status.textContent = 'Nombre, calle, población y código postal son obligatorios.';
+    return;
+  }
+  const { data: { user } } = await sb.auth.getUser();
+  const { error } = await sb.from('contactos').insert({
+    user_id: user.id, nombre, calle, poblacion, cp, pais:'ES',
+    nif: document.getElementById('mc-nif').value.trim() || null,
+    telefono: document.getElementById('mc-telefono').value.trim() || null,
+    email: document.getElementById('mc-email').value.trim() || null,
+    notas: document.getElementById('mc-notas').value.trim() || null,
+  });
+  if(error){ status.style.color='var(--bad)'; status.textContent = 'Error: '+error.message; return; }
+  ['mc-nombre','mc-nif','mc-telefono','mc-email','mc-calle','mc-poblacion','mc-cp','mc-notas'].forEach(id=>document.getElementById(id).value='');
+  status.style.color='var(--ok)'; status.textContent = 'Contacto añadido.';
+  await cargaContactos();
+};
+
+const IMPORT_FIELD_MAP = {
+  nombre: ['nombre','name','razon social','razón social','empresa'],
+  nif: ['nif','cif','dni'],
+  telefono: ['telefono','teléfono','phone','tel','movil','móvil'],
+  email: ['email','correo','e-mail'],
+  calle: ['calle','direccion','dirección','address','domicilio'],
+  poblacion: ['poblacion','población','ciudad','city','localidad'],
+  cp: ['cp','codigo postal','código postal','postal code','postalcode'],
+  pais: ['pais','país','country'],
+  notas: ['notas','observaciones','notes'],
+};
+function mapeaFila(row){
+  const out = {};
+  const keys = Object.keys(row);
+  for(const [campo, alias] of Object.entries(IMPORT_FIELD_MAP)){
+    const k = keys.find(k=>alias.includes(k.toString().trim().toLowerCase()));
+    if(k!==undefined && row[k]!==undefined && row[k]!=='') out[campo] = String(row[k]).trim();
+  }
+  return out;
+}
+document.getElementById('btn-importar-contactos').onclick = async ()=>{
+  const status = document.getElementById('mc-import-status');
+  const file = document.getElementById('mc-import-file').files[0];
+  if(!file){ status.style.color='var(--bad)'; status.textContent = 'Elige primero un archivo CSV o Excel.'; return; }
+  status.style.color='var(--muted)'; status.textContent = 'Leyendo archivo...';
+  try{
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, {type:'array'});
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, {defval:''});
+    const mapeadas = rows.map(mapeaFila).filter(r=>r.nombre && r.calle && r.poblacion && r.cp);
+    const descartadas = rows.length - mapeadas.length;
+    if(!mapeadas.length){ status.style.color='var(--bad)'; status.textContent = 'No se ha reconocido ninguna fila válida (faltan nombre, calle, población o CP).'; return; }
+    const { data: { user } } = await sb.auth.getUser();
+    mapeadas.forEach(r=>{ r.user_id = user.id; r.pais = r.pais || 'ES'; });
+    const { error } = await sb.from('contactos').insert(mapeadas);
+    if(error) throw error;
+    status.style.color='var(--ok)';
+    status.textContent = `Importados ${mapeadas.length} contactos.` + (descartadas ? ` (${descartadas} filas descartadas por faltar datos obligatorios)` : '');
+    document.getElementById('mc-import-file').value = '';
+    await cargaContactos();
+  }catch(err){
+    status.style.color='var(--bad)'; status.textContent = 'Error al importar: '+err.message;
+  }
+};
+
 document.getElementById('sel-contacto').addEventListener('change', (e)=>{
   const c = contactosCache.find(x=>x.id===e.target.value);
   if(!c) return;
