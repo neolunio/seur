@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Panel SEUR · Leotec</title>
+<title>Panel de Administración de Logística y Distribución · Leotec</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.0/chart.umd.min.js"></script>
@@ -92,7 +92,7 @@
 <body>
 
 <div class="wrap" id="login-screen">
-  <header><h1>Panel <span>SEUR</span> · Leotec</h1></header>
+  <header><h1>Panel de Administración de Logística y Distribución · <span>Leotec</span></h1></header>
   <div class="card">
     <h3 style="margin-top:0;">Iniciar sesión</h3>
     <input type="email" id="login-email" placeholder="Email" autocomplete="username" />
@@ -108,7 +108,7 @@
 </div>
 
 <div class="wrap" id="recovery-screen" style="display:none;">
-  <header><h1>Panel <span>SEUR</span> · Leotec</h1></header>
+  <header><h1>Panel de Administración de Logística y Distribución · <span>Leotec</span></h1></header>
   <div class="card" style="max-width:380px;margin:0 auto;">
     <h3 style="margin-top:0;">Nueva contraseña</h3>
     <input type="password" id="recovery-pass" placeholder="Nueva contraseña (mín. 6 caracteres)" autocomplete="new-password" />
@@ -119,7 +119,7 @@
 
 <div class="wrap" id="app">
   <header>
-    <h1>Panel <span>SEUR</span> · Leotec</h1>
+    <h1>Panel de Administración de Logística y Distribución · <span>Leotec</span></h1>
     <div class="userbar"><span id="user-email"></span><button class="ghost small" id="btn-logout">Salir</button></div>
   </header>
 
@@ -243,14 +243,24 @@
       </div>
 
       <h3>Datos del envío</h3>
-      <div class="row" style="margin-bottom:10px;">
-        <select id="env-centro"><option value="hospitalet">Origen: Hospitalet</option><option value="coslada">Origen: Coslada</option></select>
-        <select id="env-tipo"><option value="envio">Envío (entregar a destinatario)</option><option value="recogida">Recogida (recoger de destinatario)</option></select>
+      <div class="row" style="margin-bottom:10px;gap:16px;">
+        <div>
+          <label class="note" style="display:block;margin-bottom:3px;">Centro (cuenta SEUR que factura)</label>
+          <select id="env-centro"><option value="hospitalet">Hospitalet</option><option value="coslada">Coslada</option></select>
+        </div>
+        <div>
+          <label class="note" style="display:block;margin-bottom:3px;">Tipo de operación</label>
+          <select id="env-tipo"><option value="envio">Envío (entregar a destinatario)</option><option value="recogida">Recogida (recoger de destinatario)</option></select>
+        </div>
       </div>
 
       <div class="charts-row">
         <div class="chart-box">
-          <h4>Remitente (editable)</h4>
+          <h4 id="titulo-remitente">Remitente</h4>
+          <label class="note" style="display:block;margin-bottom:3px;">Elegir remitente</label>
+          <select id="sel-remitente" style="width:100%;margin-bottom:8px;">
+            <option value="">— Centro seleccionado arriba (por defecto) —</option>
+          </select>
           <input type="text" id="rem-nombre" placeholder="Nombre" />
           <input type="text" id="rem-telefono" placeholder="Teléfono" style="margin-top:6px;" />
           <input type="text" id="rem-email" placeholder="Email" style="margin-top:6px;" />
@@ -259,7 +269,7 @@
           <input type="text" id="rem-cp" placeholder="Código postal" style="margin-top:6px;" />
         </div>
         <div class="chart-box">
-          <h4>Destinatario</h4>
+          <h4 id="titulo-destinatario">Destinatario</h4>
           <input type="text" id="dest-nombre" placeholder="Nombre" />
           <input type="text" id="dest-telefono" placeholder="Teléfono" style="margin-top:6px;" />
           <input type="text" id="dest-email" placeholder="Email" style="margin-top:6px;" />
@@ -269,6 +279,17 @@
           <label class="note" style="display:block;margin-top:8px;"><input type="checkbox" id="chk-guardar-contacto" /> Guardar como contacto para el futuro</label>
         </div>
       </div>
+
+      <h3>Punto de recogida SEUR (Pickup / Locker) — opcional</h3>
+      <div class="note">Si el envío es a entregar en un punto SEUR, o quieres recoger un paquete depositado en uno, búscalo aquí en vez de rellenar la dirección a mano.</div>
+      <div class="row" style="margin:8px 0;">
+        <input type="text" id="pickup-cp" placeholder="Código postal" style="max-width:140px;" />
+        <input type="text" id="pickup-poblacion" placeholder="Población" style="max-width:220px;" />
+        <button class="ghost small" id="btn-buscar-pickup">Buscar puntos SEUR</button>
+        <button class="ghost small" id="btn-quitar-pickup" style="display:none;">Quitar punto seleccionado</button>
+      </div>
+      <div id="pickup-resultados"></div>
+      <div class="note" id="pickup-seleccionado" style="color:var(--ok);font-weight:600;"></div>
 
       <h3>Bulto</h3>
       <div class="row" style="margin-bottom:10px;">
@@ -1057,6 +1078,20 @@ function renderTarifas(){
 }
 
 // ---------- EVOLUCIÓN MENSUAL (Hospitalet) ----------
+// Compatible con el formato nuevo (detalle.catCounts[label].n) y con
+// facturas antiguas guardadas con el formato previo (detalle.detalleCats[label]).
+function catN(r, label){
+  const d = r.detalle;
+  if(!d) return null;
+  if(d.catCounts && d.catCounts[label] && typeof d.catCounts[label].n === 'number') return d.catCounts[label].n;
+  if(d.detalleCats && typeof d.detalleCats[label] === 'number') return d.detalleCats[label];
+  return null;
+}
+function catPortes(r, label){
+  const d = r.detalle;
+  if(d && d.catCounts && d.catCounts[label]) return d.catCounts[label].portes || 0;
+  return 0;
+}
 function renderEvolucion(){
   const rows = histCache.filter(r=>r.centro==='hospitalet').sort((a,b)=>a.anio-b.anio||a.mes-b.mes);
   const cont = document.getElementById('evolucion-content');
@@ -1066,10 +1101,10 @@ function renderEvolucion(){
 
   const cats = [
     ['Total Expediciones', r=>r.expediciones],
-    ['Envíos Leotec -> Decathlon', r=> r.detalle?.detalleCats?.['Envíos Leotec -> Decathlon'] ?? '—'],
-    ['Envíos Leotec -> Otros', r=> r.detalle?.detalleCats?.['Envíos Leotec -> Otros'] ?? '—'],
-    ['Recogidas Decathlon -> Leotec', r=> r.detalle?.detalleCats?.['Recogidas Decathlon -> Leotec'] ?? '—'],
-    ['Otras Recogidas', r=> r.detalle?.detalleCats?.['Otras Recogidas (Otros -> Leotec)'] ?? '—'],
+    ['Envíos Leotec -> Decathlon', r=> catN(r,'Envíos Leotec -> Decathlon') ?? '—'],
+    ['Envíos Leotec -> Otros', r=> catN(r,'Envíos Leotec -> Otros') ?? '—'],
+    ['Recogidas Decathlon -> Leotec', r=> catN(r,'Recogidas Decathlon -> Leotec') ?? '—'],
+    ['Otras Recogidas', r=> catN(r,'Otras Recogidas (Otros -> Leotec)') ?? '—'],
     ['Servicios Pickup (2SHOP)', r=> r.detalle?.n2shop ?? '—'],
   ];
   const cols = rows.map(r=>`${MESES[r.mes-1]} ${r.anio}`);
@@ -1087,10 +1122,10 @@ function renderEvolucion(){
   renderChart('chart-evolucion', {
     type:'bar',
     data:{ labels: cols, datasets:[
-      {label:'Envíos→Decathlon', data: rows.map(r=>r.detalle?.detalleCats?.['Envíos Leotec -> Decathlon']||0), backgroundColor:'#0a2540'},
-      {label:'Envíos→Otros', data: rows.map(r=>r.detalle?.detalleCats?.['Envíos Leotec -> Otros']||0), backgroundColor:'#f47b20'},
-      {label:'Recogidas Decathlon', data: rows.map(r=>r.detalle?.detalleCats?.['Recogidas Decathlon -> Leotec']||0), backgroundColor:'#4a6b2f'},
-      {label:'Otras recogidas', data: rows.map(r=>r.detalle?.detalleCats?.['Otras Recogidas (Otros -> Leotec)']||0), backgroundColor:'#7c7568'},
+      {label:'Envíos→Decathlon', data: rows.map(r=>catN(r,'Envíos Leotec -> Decathlon')||0), backgroundColor:'#0a2540'},
+      {label:'Envíos→Otros', data: rows.map(r=>catN(r,'Envíos Leotec -> Otros')||0), backgroundColor:'#f47b20'},
+      {label:'Recogidas Decathlon', data: rows.map(r=>catN(r,'Recogidas Decathlon -> Leotec')||0), backgroundColor:'#4a6b2f'},
+      {label:'Otras recogidas', data: rows.map(r=>catN(r,'Otras Recogidas (Otros -> Leotec)')||0), backgroundColor:'#7c7568'},
     ]},
     options:{ scales:{ x:{stacked:true}, y:{stacked:true,beginAtZero:true} }, plugins:{legend:{position:'bottom',labels:{boxWidth:10,font:{size:10}}}} }
   });
@@ -1098,14 +1133,14 @@ function renderEvolucion(){
 
 // ---------- DECATHLON (agregado mensual, sin desglose por centro) ----------
 function renderDecathlon(){
-  const rows = histCache.filter(r=>r.centro==='hospitalet' && r.detalle && r.detalle.catCounts).sort((a,b)=>a.anio-b.anio||a.mes-b.mes);
+  const rows = histCache.filter(r=>r.centro==='hospitalet' && r.detalle).sort((a,b)=>a.anio-b.anio||a.mes-b.mes);
   const cont = document.getElementById('decathlon-content');
   const empty = document.getElementById('decathlon-empty');
   if(!rows.length){ cont.innerHTML=''; empty.style.display='block'; return; }
   empty.style.display='none';
 
-  const envios = rows.map(r=>r.detalle.catCounts['Envíos Leotec -> Decathlon'] || {n:0,portes:0,comb:0});
-  const recogidas = rows.map(r=>r.detalle.catCounts['Recogidas Decathlon -> Leotec'] || {n:0,portes:0,comb:0});
+  const envios = rows.map(r=>({n: catN(r,'Envíos Leotec -> Decathlon')||0, portes: catPortes(r,'Envíos Leotec -> Decathlon')}));
+  const recogidas = rows.map(r=>({n: catN(r,'Recogidas Decathlon -> Leotec')||0, portes: catPortes(r,'Recogidas Decathlon -> Leotec')}));
   const cols = rows.map(r=>`${MESES[r.mes-1].slice(0,3)} ${r.anio}`);
 
   const totEnviosN = envios.reduce((s,e)=>s+e.n,0), totEnviosE = envios.reduce((s,e)=>s+e.portes,0);
@@ -1154,6 +1189,7 @@ const SENDER_DEFAULTS = {
   hospitalet: { nombre:'LEOTEC DIGITAL LIFESTYLE SL', telefono:'934709287', email:'soporte@leotec.com', calle:"Avd. Josep Tarradellas i Joan 259 Bajo", poblacion:"L'HOSPITALET DE LLOBREGAT", cp:'08901' },
 };
 function aplicaRemitentePorCentro(){
+  document.getElementById('sel-remitente').value = '';
   const centro = document.getElementById('env-centro').value;
   const d = SENDER_DEFAULTS[centro];
   document.getElementById('rem-nombre').value = d.nombre;
@@ -1164,8 +1200,22 @@ function aplicaRemitentePorCentro(){
   document.getElementById('rem-cp').value = d.cp;
 }
 document.getElementById('env-centro').addEventListener('change', aplicaRemitentePorCentro);
+document.getElementById('sel-remitente').addEventListener('change', (e)=>{
+  if(!e.target.value){ aplicaRemitentePorCentro(); return; }
+  const c = contactosCache.find(x=>x.id===e.target.value);
+  if(!c) return;
+  document.getElementById('rem-nombre').value = c.nombre||'';
+  document.getElementById('rem-telefono').value = c.telefono||'';
+  document.getElementById('rem-email').value = c.email||'';
+  document.getElementById('rem-calle').value = c.calle||'';
+  document.getElementById('rem-poblacion').value = c.poblacion||'';
+  document.getElementById('rem-cp').value = c.cp||'';
+});
 document.getElementById('env-tipo').addEventListener('change', (e)=>{
-  document.getElementById('row-fecha-recogida').style.display = e.target.value==='recogida' ? 'flex' : 'none';
+  const esRecogida = e.target.value==='recogida';
+  document.getElementById('row-fecha-recogida').style.display = esRecogida ? 'flex' : 'none';
+  document.getElementById('titulo-destinatario').textContent = esRecogida ? 'Recoger en (destinatario)' : 'Destinatario';
+  document.getElementById('pickup-seleccionado').dataset.rol = esRecogida ? 'sender' : 'receiver';
 });
 
 let contactosCache = [];
@@ -1176,8 +1226,9 @@ async function cargaContactos(){
   const { data, error } = await sb.from('contactos').select('*').order('nombre');
   if(error){ console.error(error); return; }
   contactosCache = data || [];
-  const sel = document.getElementById('sel-contacto');
-  sel.innerHTML = '<option value="">— Nuevo destinatario —</option>' + contactosCache.map(c=>`<option value="${c.id}">${c.nombre}</option>`).join('');
+  const opciones = contactosCache.map(c=>`<option value="${c.id}">${c.nombre}</option>`).join('');
+  document.getElementById('sel-contacto').innerHTML = '<option value="">— Nuevo destinatario —</option>' + opciones;
+  document.getElementById('sel-remitente').innerHTML = '<option value="">— Centro seleccionado arriba (por defecto) —</option>' + opciones;
 }
 document.getElementById('sel-contacto').addEventListener('change', (e)=>{
   const c = contactosCache.find(x=>x.id===e.target.value);
@@ -1195,6 +1246,48 @@ document.getElementById('btn-borrar-contacto').onclick = async ()=>{
   if(!confirm('¿Eliminar este contacto guardado?')) return;
   await sb.from('contactos').delete().eq('id', id);
   await cargaContactos();
+};
+
+// ---------- PUNTOS DE RECOGIDA SEUR (Pickup / Locker) ----------
+let puntoSeurSeleccionado = null;
+document.getElementById('btn-buscar-pickup').onclick = async ()=>{
+  const cp = document.getElementById('pickup-cp').value.trim();
+  const poblacion = document.getElementById('pickup-poblacion').value.trim();
+  const cont = document.getElementById('pickup-resultados');
+  if(!cp && !poblacion){ cont.innerHTML = '<div class="note" style="color:var(--bad);">Escribe al menos el código postal o la población.</div>'; return; }
+  cont.innerHTML = '<div class="note">Buscando puntos SEUR...</div>';
+  try{
+    const resp = await fetch('/api/seur-shipments', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ action:'search_pickups', payload:{ countryCode:'ES', postalCode: cp, cityName: poblacion } }) });
+    const json = await resp.json();
+    if(!resp.ok) throw new Error(json.error || 'Error desconocido');
+    const puntos = (json.data||[]).filter(p=>p.pudoId);
+    if(!puntos.length){ cont.innerHTML = '<div class="note">No se han encontrado puntos SEUR para esa búsqueda.</div>'; return; }
+    cont.innerHTML = `<table><thead><tr><th>Nombre</th><th>Dirección</th><th></th></tr></thead><tbody>
+      ${puntos.slice(0,15).map((p,i)=>`<tr><td>${p.name}</td><td>${p.address}, ${p.cityName} (${p.postalCode})</td>
+        <td><button class="ghost small" data-idx="${i}">Usar este punto</button></td></tr>`).join('')}
+      </tbody></table>`;
+    cont.querySelectorAll('button[data-idx]').forEach(btn=>{
+      btn.onclick = ()=>{
+        const p = puntos[parseInt(btn.dataset.idx)];
+        puntoSeurSeleccionado = p;
+        document.getElementById('dest-nombre').value = p.name;
+        document.getElementById('dest-calle').value = p.address;
+        document.getElementById('dest-poblacion').value = p.cityName;
+        document.getElementById('dest-cp').value = p.postalCode;
+        document.getElementById('pickup-seleccionado').textContent = `Punto SEUR seleccionado: ${p.name} (${p.pudoId})`;
+        document.getElementById('btn-quitar-pickup').style.display = 'inline-block';
+        cont.innerHTML = '';
+      };
+    });
+  }catch(err){
+    cont.innerHTML = `<div class="note" style="color:var(--bad);">Error al buscar puntos SEUR: ${err.message}</div>`;
+  }
+};
+document.getElementById('btn-quitar-pickup').onclick = ()=>{
+  puntoSeurSeleccionado = null;
+  document.getElementById('pickup-seleccionado').textContent = '';
+  document.getElementById('btn-quitar-pickup').style.display = 'none';
 };
 
 let ultimoShipmentCode = null, ultimoEntity = null;
@@ -1230,23 +1323,26 @@ document.getElementById('btn-crear-envio').onclick = async ()=>{
 
   try{
     let action, payload;
+    const productCode = puntoSeurSeleccionado ? 48 : 2;
     if(tipo==='envio'){
       action = 'create_shipment';
       payload = {
-        serviceCode: 1, productCode: 2, charges: 'P', reference: ref,
+        serviceCode: 1, productCode, charges: 'P', reference: ref,
         sender: { name: remitente.nombre, email: remitente.email, phone: remitente.telefono, accountNumber: ccc, contactName: remitente.nombre,
           address: { streetName: remitente.calle, cityName: remitente.poblacion, postalCode: remitente.cp, country: 'ES' } },
         receiver: { name: destinatario.nombre, email: destinatario.email, phone: destinatario.telefono, contactName: destinatario.nombre,
-          address: { streetName: destinatario.calle, cityName: destinatario.poblacion, postalCode: destinatario.cp, country: 'ES' } },
+          address: { streetName: destinatario.calle, cityName: destinatario.poblacion, postalCode: destinatario.cp, country: 'ES',
+            ...(puntoSeurSeleccionado ? { pickupCentreCode: puntoSeurSeleccionado.pudoId } : {}) } },
         parcels: [{ weight: peso, width: ancho, height: alto, length: largo }],
       };
     } else {
       action = 'create_collection';
       payload = {
-        serviceCode: 1, productCode: 2, ref, collectionDate: document.getElementById('env-fecha').value, label: false, payer: 'ORD',
+        serviceCode: 1, productCode, ref, collectionDate: document.getElementById('env-fecha').value, label: false, payer: 'ORD',
         customer: { accountNumber: ccc, name: remitente.nombre, idNumber: '', phone: remitente.telefono, email: remitente.email },
         sender: { name: destinatario.nombre, phone: destinatario.telefono, email: destinatario.email, contactName: destinatario.nombre,
-          address: { streetName: destinatario.calle, cityName: destinatario.poblacion, postalCode: destinatario.cp, country: 'ES' } },
+          address: { streetName: destinatario.calle, cityName: destinatario.poblacion, postalCode: destinatario.cp, country: 'ES',
+            ...(puntoSeurSeleccionado ? { pickupCentreCode: puntoSeurSeleccionado.pudoId } : {}) } },
         parcels: [{ weight: peso, width: ancho, height: alto, length: largo, packReference: ref }],
         declaredValue: 0, insuredValue: 0, cashOnDeliveryValue: 0,
       };

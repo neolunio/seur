@@ -53,6 +53,11 @@ export default async (req, context) => {
     } else if (action === 'cancel_collection') {
       url = `${base}/pic/v1/collections/cancel`;
       body = JSON.stringify(payload);
+    } else if (action === 'search_pickups') {
+      const qs = new URLSearchParams(payload).toString();
+      url = `${base}/pic/v1/pickups?${qs}`;
+      method = 'GET';
+      body = undefined;
     } else if (action === 'get_label') {
       const qs = new URLSearchParams(payload).toString();
       url = `${base}/pic/v1/labels?${qs}`;
