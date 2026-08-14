@@ -7,6 +7,12 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.0/chart.umd.min.js"></script>
+<script type="module">
+  import * as pdfjsLib from "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/6.1.200/pdf.min.mjs";
+  pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/6.1.200/pdf.worker.min.mjs";
+  window.pdfjsLib = pdfjsLib;
+  window.dispatchEvent(new Event('pdfjs-ready'));
+</script>
 <style>
   :root{
     --ink:#1c2b33; --paper:#f6f4ee; --line:#d8d2c4; --seur:#f47b20; --dpd:#0a2540;
@@ -101,13 +107,22 @@
     <h3 style="margin-top:0;">Iniciar sesión</h3>
     <input type="email" id="login-email" placeholder="Email" autocomplete="username" />
     <input type="password" id="login-pass" placeholder="Contraseña" autocomplete="current-password" />
-    <div class="row">
-      <button id="btn-login" style="flex:1">Entrar</button>
-      <button class="ghost" id="btn-signup" style="flex:1">Crear cuenta</button>
-    </div>
+    <button id="btn-login" style="width:100%;">Entrar</button>
     <div id="login-error"></div>
-    <div class="note">La primera vez, pulsa "Crear cuenta" con tu email y una contraseña. Supabase te enviará un correo de confirmación si lo tienes activado en el proyecto.</div>
+    <div class="note">El acceso es solo por invitación del administrador. Si aún no tienes cuenta, pídele que te dé de alta.</div>
     <div class="note" style="margin-top:10px;"><a href="#" id="link-forgot" style="color:var(--dpd);">¿Olvidaste tu contraseña?</a></div>
+  </div>
+</div>
+
+<div class="wrap" id="pending-screen" style="display:none;">
+  <header><h1>Panel de Administración de Logística y Distribución · <span>Leotec</span></h1></header>
+  <div class="card" style="max-width:420px;margin:0 auto;text-align:center;">
+    <h3 style="margin-top:0;">Cuenta pendiente de aprobación</h3>
+    <p class="note">Tu cuenta existe pero todavía no tiene acceso activado. Pide al administrador del panel que te dé de alta desde la pestaña Administración.</p>
+    <div class="row" style="justify-content:center;">
+      <button class="ghost small" id="btn-pending-retry">Reintentar</button>
+      <button class="ghost small" id="btn-pending-logout">Salir</button>
+    </div>
   </div>
 </div>
 
@@ -120,6 +135,7 @@
     <div id="recovery-error" class="note" style="min-height:16px;color:var(--bad);"></div>
   </div>
 </div>
+
 
 <div class="wrap" id="app">
   <header>
@@ -135,15 +151,17 @@
     <div class="tab" data-tab="historial">Historial</div>
     <div class="tab" data-tab="tarifas">Tarifas</div>
     <div class="tab" data-tab="envios">Crear envío</div>
+    <div class="tab" data-tab="admin" id="tab-admin" style="display:none;">Administración</div>
   </div>
 
   <div class="panel active" id="panel-subir">
     <div class="card">
       <label class="drop" id="drop">
-        <input type="file" id="file" accept=".xlsx" multiple />
-        <div class="big">Arrastra aquí la factura SEUR (.xlsx)</div>
-        <div>o haz clic para elegir el archivo — puedes soltar Coslada y Hospitalet a la vez</div>
+        <input type="file" id="file" accept=".xlsx,.pdf" multiple />
+        <div class="big">Arrastra aquí la factura SEUR (.xlsx o .pdf)</div>
+        <div>o haz clic para elegir el archivo — puedes soltar Coslada y Hospitalet, o el Excel y el PDF, a la vez</div>
       </label>
+      <div class="note">El .xlsx da el análisis completo (incluye desglose de combustible y centros Decathlon en recogidas). Si solo tienes el PDF, se analiza igual pero de forma simplificada — y en ambos casos el PDF queda guardado para poder consultarlo después.</div>
       <div class="note" id="status"></div>
     </div>
   </div>
@@ -205,7 +223,7 @@
           <th data-k="centro">Centro</th><th data-k="mes">Mes</th><th data-k="anio">Año</th>
           <th data-k="expediciones" class="num">Exp.</th><th data-k="bultos" class="num">Bultos</th>
           <th data-k="peso" class="num">Peso (Kg)</th><th data-k="portes" class="num">Portes (€)</th>
-          <th data-k="combustible" class="num">Combustible (€)</th><th data-k="total" class="num">Total (€)</th>
+          <th data-k="combustible" class="num">Combustible (€)</th><th data-k="total" class="num">Total (€)</th><th>PDF</th>
         </tr></thead>
         <tbody></tbody>
       </table>
@@ -314,6 +332,28 @@
         <button class="ghost" id="btn-descargar-etiqueta" style="display:none;">Descargar etiqueta (PDF)</button>
       </div>
       <div class="note" id="envio-status" style="min-height:16px;"></div>
+    </div>
+  </div>
+
+  <div class="panel" id="panel-admin">
+    <div class="card">
+      <div class="flex-between">
+        <h3 style="border:none;margin:0;">Invitar nuevo usuario</h3>
+      </div>
+      <div class="note">Se le enviará un correo de Supabase para que fije su contraseña. Se activa con acceso completo por defecto — puedes ajustar sus permisos por pestaña justo debajo en cuanto aparezca en la lista.</div>
+      <div class="row" style="margin-top:8px;">
+        <input type="email" id="admin-invite-email" placeholder="email@empresa.com" style="flex:1;max-width:320px;" />
+        <button id="btn-admin-invite">Invitar</button>
+      </div>
+      <div class="note" id="admin-invite-status" style="min-height:16px;"></div>
+    </div>
+
+    <div class="card">
+      <div class="flex-between">
+        <h3 style="border:none;margin:0;">Usuarios y permisos</h3>
+        <button class="ghost small" id="btn-admin-refresh">Refrescar</button>
+      </div>
+      <div id="admin-tabla"></div>
     </div>
   </div>
 </div>
@@ -537,6 +577,9 @@ async function guardaRegistro(reg){
     portes: reg.portes, combustible: reg.combustible, total: reg.total,
     detalle: reg.detalle || null, email_borrador: reg.email_borrador || null,
   };
+  // Solo se incluye pdf_path cuando este registro trae uno (p.ej. al subir un PDF):
+  // así, subir después el xlsx del mismo mes no borra el PDF ya guardado, y viceversa.
+  if(reg.pdf_path) row.pdf_path = reg.pdf_path;
   // upsert: si ya existe una factura de ese centro/mes/año la actualiza en vez de duplicarla
   const { error } = await sb.from('facturas').upsert(row, { onConflict: 'user_id,centro,anio,mes' });
   if(error) throw error;
@@ -893,11 +936,16 @@ async function mostrarInforme(){
   renderInformeSubtabs();
   const inf = informesCargados[activeInformeKey];
   const badge = `<span class="badge-center ${inf.centro}">${inf.centro.toUpperCase()}</span>`;
+  const filaHist = histCache.find(r=>r.centro===inf.centro && r.anio===inf.anio && r.mes===inf.mes);
+  const pdfPath = filaHist?.pdf_path;
 
   document.getElementById('informe-content').innerHTML = `
     <div class="card">
       <div class="flex-between"><h3 style="border:none;margin:0;">${badge} ${MESES[inf.mes-1]} ${inf.anio}</h3>
-      <button class="small" id="btn-copy-email">Copiar borrador (texto)</button></div>
+      <div class="email-actions">
+        ${pdfPath ? '<button class="ghost small" id="btn-ver-pdf">Ver PDF original</button>' : ''}
+        <button class="small" id="btn-copy-email">Copiar borrador (texto)</button>
+      </div></div>
       ${inf.res.html}
       <div class="charts-row">
         <div class="chart-box"><h4>Coste por rango de peso</h4><canvas id="chart-rango"></canvas></div>
@@ -926,6 +974,7 @@ async function mostrarInforme(){
     renderChart('chart-cat', destinatariosChartConfig(top.map(t=>t.dest), top.map(t=>t.portes)));
   }
 
+  if(pdfPath) document.getElementById('btn-ver-pdf').onclick = ()=>abrePDF(pdfPath);
   document.getElementById('btn-copy-email').onclick = ()=>{
     navigator.clipboard.writeText(inf.res.emailBody);
     document.getElementById('btn-copy-email').textContent = '¡Copiado!';
@@ -1053,7 +1102,9 @@ function renderHistorial(){
     <td class="num">${r.expediciones}</td><td class="num">${r.bultos}</td>
     <td class="num">${num(r.peso)}</td><td class="num">${euro(r.portes)}</td>
     <td class="num">${euro(r.combustible)}</td><td class="num">${euro(r.total)}</td>
+    <td>${r.pdf_path ? `<button class="ghost small" data-pdf="${r.pdf_path}">PDF</button>` : ''}</td>
   </tr>`).join('');
+  tbody.querySelectorAll('button[data-pdf]').forEach(btn=>{ btn.onclick = ()=>abrePDF(btn.dataset.pdf); });
   document.getElementById('hist-empty').style.display = rows.length? 'none':'block';
   document.getElementById('tbl-historial').style.display = rows.length? 'table':'none';
 
@@ -1549,6 +1600,7 @@ document.querySelectorAll('.tab').forEach(t=>{
     if(t.dataset.tab==='decathlon') refrescaHistorial().then(renderDecathlon);
     if(t.dataset.tab==='tarifas') renderTarifas();
     if(t.dataset.tab==='envios') cargaContactos();
+    if(t.dataset.tab==='admin') renderAdminTabla();
   };
 });
 
@@ -1568,13 +1620,178 @@ async function handleFiles(files){
   status.textContent = 'Procesando...';
   try{
     for(const f of files){
-      const {centro, anio, mes} = await procesaArchivo(f);
+      const esPDF = f.name.toLowerCase().endsWith('.pdf');
+      const {centro, anio, mes} = esPDF ? await procesaArchivoPDF(f) : await procesaArchivo(f);
       status.textContent = `Procesada: ${f.name} → ${centro.toUpperCase()} (${MESES[mes-1]} ${anio})`;
     }
     mostrarInforme();
   }catch(err){
     status.textContent = 'Error al leer el archivo: '+err.message;
   }
+}
+
+// ---------- LECTURA DE FACTURAS EN PDF (análisis simplificado + archivo) ----------
+const PDF_ROW_RE = /^(\d{2}-\d{2}-\d{4})\s+(\S{2,4})\s+(\S{2,4})\s+(\S+)\s+(\S+)\s+(\d+)\s+(.+?)\s+(\d+)\s+([\d.,]+)\s+([SENI])\s+([\d.,]+)€\s*$/;
+
+function numES(s){ return parseFloat(String(s).replace(/\./g,'').replace(',', '.')); }
+
+async function extraeLineasPDF(file){
+  if(!window.pdfjsLib) throw new Error('El lector de PDF todavía se está cargando, espera un segundo y vuelve a intentarlo.');
+  const buf = await file.arrayBuffer();
+  const doc = await window.pdfjsLib.getDocument({data: buf}).promise;
+  const lineas = [];
+  for(let p=1; p<=doc.numPages; p++){
+    const page = await doc.getPage(p);
+    const content = await page.getTextContent();
+    // Agrupa los "items" de texto por su posición vertical (Y) para reconstruir filas de la tabla
+    const filas = {};
+    for(const item of content.items){
+      const y = Math.round(item.transform[5]);
+      if(!filas[y]) filas[y] = [];
+      filas[y].push(item);
+    }
+    const ys = Object.keys(filas).map(Number).sort((a,b)=>b-a);
+    for(const y of ys){
+      const texto = filas[y].sort((a,b)=>a.transform[4]-b.transform[4]).map(i=>i.str).join(' ').replace(/\s+/g,' ').trim();
+      if(texto) lineas.push(texto);
+    }
+  }
+  return lineas;
+}
+
+function extraeNombreDestinatario(blob){
+  const palabras = blob.split(' ');
+  const nombre = [];
+  for(const w of palabras){
+    if(/\d/.test(w)) break;
+    nombre.push(w);
+  }
+  return (nombre.join(' ').trim() || blob).replace(/\s+-\s*$/,'').trim();
+}
+
+function detectaCentroPDF(textoCompleto){
+  if(textoCompleto.includes('51735')) return 'hospitalet';
+  if(textoCompleto.includes('92160')) return 'coslada';
+  return 'hospitalet';
+}
+function detectaFechaFacturaPDF(textoCompleto){
+  const m = textoCompleto.match(/Fecha Factura:?\s*(\d{2})-(\d{2})-(\d{4})/);
+  if(!m) throw new Error('No se ha encontrado la fecha de la factura en el PDF.');
+  return { anio: parseInt(m[3]), mes: parseInt(m[2]) };
+}
+
+function computeStatsDesdePDF(filas, centro, anio, mes){
+  const registros = filas.map(f=>({
+    Orig: f[1], Dest: f[2], Producto: f[4], Bultos: parseInt(f[7]),
+    Peso: numES(f[8]), Portes: numES(f[10]), DestinatarioRaw: f[6],
+    Destinatario: extraeNombreDestinatario(f[6]),
+  }));
+  registros.forEach(r=>{ r.PesoFacturable = r.Peso; r.RangoPeso = pesoBracketLabel(r.Peso); });
+
+  const total = registros.length;
+  const bultos = registros.reduce((s,r)=>s+r.Bultos,0);
+  const peso = registros.reduce((s,r)=>s+r.Peso,0);
+  const portes = registros.reduce((s,r)=>s+r.Portes,0);
+  const rp = rangoPesoTabla(registros);
+  const maxEnvio = registros.reduce((max,r)=> r.Portes>(max?max.Portes:0)?r:max, null);
+  const base = {
+    anio, mes, total, bultos, peso, portes, comb: 0, rp, ajustes: 0,
+    simplificado: true, fuente: 'pdf',
+    maxEnvio: maxEnvio?{destinatario:maxEnvio.Destinatario, portes:maxEnvio.Portes, peso:maxEnvio.PesoFacturable}:null,
+  };
+
+  if(centro === 'coslada'){
+    const dest = {};
+    registros.forEach(r=>{
+      const k = r.Destinatario;
+      if(!dest[k]) dest[k] = {n:0,bultos:0,kg:0,portes:0,comb:0};
+      dest[k].n++; dest[k].bultos+=r.Bultos; dest[k].kg+=r.Peso; dest[k].portes+=r.Portes;
+    });
+    base.centro = 'coslada';
+    base.destRows = Object.entries(dest).map(([k,v])=>({dest:k,...v})).sort((a,b)=>b.portes-a.portes);
+    return base;
+  }
+
+  // Hospitalet: Orig=BAR -> envío desde Hospitalet; Dest=BAR (y Orig!=BAR) -> recogida hacia Hospitalet.
+  // El PDF no incluye el remitente en las recogidas, así que no se puede saber si venían de un centro
+  // Decathlon o no — se cuentan todas juntas en "Otras Recogidas".
+  const envios = registros.filter(r=>r.Orig==='BAR');
+  const recogidas = registros.filter(r=>r.Dest==='BAR' && r.Orig!=='BAR');
+  const enviosDecathlon = envios.filter(r=>r.Destinatario.toUpperCase().includes('DECATHLON'));
+  const enviosOtros = envios.filter(r=>!r.Destinatario.toUpperCase().includes('DECATHLON'));
+  const n2shop = registros.filter(r=>r.Producto==='2SHP').length;
+
+  function agrupaCentros(lista){
+    const m = {};
+    lista.forEach(r=>{
+      const k = r.Destinatario;
+      if(!m[k]) m[k] = {n:0,kg:0,portes:0,comb:0};
+      m[k].n++; m[k].kg+=r.Peso; m[k].portes+=r.Portes;
+    });
+    const arr = Object.entries(m).map(([k,v])=>({centro:k,...v})).sort((a,b)=>b.n-a.n);
+    return { arr, total: lista.length, ncentros: arr.length };
+  }
+
+  base.centro = 'hospitalet';
+  base.catCounts = {
+    'Envíos Leotec -> Decathlon': { n: enviosDecathlon.length, portes: enviosDecathlon.reduce((s,r)=>s+r.Portes,0), comb: 0 },
+    'Envíos Leotec -> Otros': { n: enviosOtros.length, portes: enviosOtros.reduce((s,r)=>s+r.Portes,0), comb: 0 },
+    'Recogidas Decathlon -> Leotec': { n: 0, portes: 0, comb: 0 },
+    'Otras Recogidas (Otros -> Leotec)': { n: recogidas.length, portes: recogidas.reduce((s,r)=>s+r.Portes,0), comb: 0 },
+  };
+  base.n2shop = n2shop;
+  base.envios = agrupaCentros(enviosDecathlon);
+  base.recogidas = { arr: [], total: recogidas.length, ncentros: 0 };
+  return base;
+}
+
+const AVISO_PDF_SIMPLIFICADO = `<div class="note" style="background:#fff8f2;border:1px solid var(--seur);border-radius:8px;padding:10px 12px;margin-bottom:14px;">
+  ⚠️ <b>Análisis simplificado, extraído automáticamente del PDF</b> (no había Excel disponible). No incluye el desglose de combustible ni, en las recogidas, el centro Decathlon de origen (el PDF no lo indica) — todas las recogidas aparecen agrupadas en "Otras Recogidas". Si consigues el Excel de este mes, súbelo para tener el análisis completo.
+</div>`;
+
+async function procesaArchivoPDF(file){
+  const lineas = await extraeLineasPDF(file);
+  const textoCompleto = lineas.join('\n');
+  const centro = detectaCentroPDF(textoCompleto);
+  const {anio, mes} = detectaFechaFacturaPDF(textoCompleto);
+
+  const filasMatch = lineas.map(l=>l.match(PDF_ROW_RE)).filter(Boolean);
+  if(!filasMatch.length){
+    throw new Error('No se ha reconocido ninguna línea de expedición en el PDF. Puede que el formato sea distinto al esperado.');
+  }
+  const stats = computeStatsDesdePDF(filasMatch, centro, anio, mes);
+
+  const res = centro==='coslada'
+    ? { html: AVISO_PDF_SIMPLIFICADO + htmlFromStatsCoslada(stats), emailBody: emailFromStatsCoslada(stats) }
+    : { html: AVISO_PDF_SIMPLIFICADO + htmlFromStatsHospitalet(stats), emailBody: emailFromStatsHospitalet(stats) };
+
+  const registro = {
+    centro, anio, mes, expediciones: stats.total, bultos: stats.bultos, peso: stats.peso,
+    portes: stats.portes, combustible: 0, total: stats.portes, detalle: stats, email_borrador: res.emailBody,
+  };
+
+  const pdfPath = await subePDFAStorage(file, centro, anio, mes);
+  registro.pdf_path = pdfPath;
+  await guardaRegistro(registro);
+
+  const key = `${centro}-${anio}-${String(mes).padStart(2,'0')}`;
+  informesCargados[key] = {centro, anio, mes, stats, res};
+  activeInformeKey = key;
+  await refrescaHistorial();
+  return {centro, anio, mes, key};
+}
+
+async function subePDFAStorage(file, centro, anio, mes){
+  const path = `${centro}/${anio}-${String(mes).padStart(2,'0')}.pdf`;
+  const { error } = await sb.storage.from('facturas-pdf').upload(path, file, { upsert: true, contentType: 'application/pdf' });
+  if(error){ console.error('No se pudo guardar el PDF en Storage:', error.message); return null; }
+  return path;
+}
+async function abrePDF(path){
+  if(!path) return;
+  const { data, error } = await sb.storage.from('facturas-pdf').createSignedUrl(path, 3600);
+  if(error){ alert('No se pudo abrir el PDF: '+error.message); return; }
+  window.open(data.signedUrl, '_blank');
 }
 
 // ---------- VERIFICACIÓN CONTRA API SEUR (tarifa exacta) ----------
@@ -1647,15 +1864,44 @@ async function verificaContraAPI(){
 document.getElementById('btn-verify-api').onclick = verificaContraAPI;
 
 // ---------- AUTENTICACIÓN ----------
-function mostrarApp(user){
+const TAB_PERMISOS = ['informe','decathlon','evolucion','historial','tarifas','envios'];
+let miPerfil = null;
+
+function aplicaPermisosATabs(){
+  const esAdmin = miPerfil?.rol === 'admin';
+  document.getElementById('tab-admin').style.display = esAdmin ? '' : 'none';
+  const permisos = miPerfil?.permisos || {};
+  TAB_PERMISOS.forEach(key=>{
+    const tab = document.querySelector(`.tab[data-tab="${key}"]`);
+    if(!tab) return;
+    const permitido = esAdmin || permisos[key] !== false;
+    tab.style.display = permitido ? '' : 'none';
+  });
+}
+
+async function mostrarApp(user){
+  const { data: perfil, error } = await sb.from('perfiles').select('*').eq('user_id', user.id).single();
+  if(error || !perfil || !perfil.activo){
+    document.getElementById('login-screen').style.display='none';
+    document.getElementById('app').style.display='none';
+    document.getElementById('pending-screen').style.display='block';
+    return;
+  }
+  miPerfil = perfil;
+  document.getElementById('pending-screen').style.display='none';
   document.getElementById('login-screen').style.display='none';
   document.getElementById('app').style.display='block';
-  document.getElementById('user-email').textContent = user.email;
+  document.getElementById('user-email').textContent = user.email + (perfil.rol==='admin' ? ' (admin)' : '');
+  aplicaPermisosATabs();
+  // Si la pestaña activa no está permitida, vuelve a "Subir factura"
+  const activa = document.querySelector('.tab.active');
+  if(activa && activa.style.display==='none') document.querySelector('[data-tab="subir"]').click();
   refrescaHistorial();
 }
 function mostrarLogin(){
   document.getElementById('login-screen').style.display='block';
   document.getElementById('app').style.display='none';
+  document.getElementById('pending-screen').style.display='none';
 }
 document.getElementById('btn-login').onclick = async ()=>{
   const email = document.getElementById('login-email').value.trim();
@@ -1666,18 +1912,15 @@ document.getElementById('btn-login').onclick = async ()=>{
   if(error){ err.textContent = error.message; return; }
   mostrarApp(data.user);
 };
-document.getElementById('btn-signup').onclick = async ()=>{
-  const email = document.getElementById('login-email').value.trim();
-  const password = document.getElementById('login-pass').value;
-  const err = document.getElementById('login-error');
-  err.textContent = '';
-  if(password.length < 6){ err.textContent = 'La contraseña debe tener al menos 6 caracteres.'; return; }
-  const { data, error } = await sb.auth.signUp({ email, password });
-  if(error){ err.textContent = error.message; return; }
-  if(data.session){ mostrarApp(data.user); }
-  else { err.style.color='var(--ok)'; err.textContent = 'Cuenta creada. Revisa tu correo para confirmarla y luego inicia sesión.'; }
-};
 document.getElementById('btn-logout').onclick = async ()=>{
+  await sb.auth.signOut();
+  mostrarLogin();
+};
+document.getElementById('btn-pending-retry').onclick = async ()=>{
+  const { data: { session } } = await sb.auth.getSession();
+  if(session) mostrarApp(session.user);
+};
+document.getElementById('btn-pending-logout').onclick = async ()=>{
   await sb.auth.signOut();
   mostrarLogin();
 };
@@ -1697,6 +1940,7 @@ document.getElementById('link-forgot').onclick = async (e)=>{
 function mostrarRecovery(){
   document.getElementById('login-screen').style.display='none';
   document.getElementById('app').style.display='none';
+  document.getElementById('pending-screen').style.display='none';
   document.getElementById('recovery-screen').style.display='block';
 }
 document.getElementById('btn-recovery-save').onclick = async ()=>{
@@ -1716,6 +1960,56 @@ document.getElementById('btn-recovery-save').onclick = async ()=>{
 sb.auth.onAuthStateChange((event, session)=>{
   if(event === 'PASSWORD_RECOVERY') mostrarRecovery();
 });
+
+// ---------- ADMINISTRACIÓN (solo visible para rol = admin) ----------
+document.getElementById('btn-admin-invite').onclick = async ()=>{
+  const email = document.getElementById('admin-invite-email').value.trim();
+  const status = document.getElementById('admin-invite-status');
+  if(!email){ status.style.color='var(--bad)'; status.textContent = 'Escribe un email.'; return; }
+  status.style.color='var(--muted)'; status.textContent = 'Invitando...';
+  const { data: { session } } = await sb.auth.getSession();
+  try{
+    const resp = await fetch('/api/admin-invite', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ email, accessToken: session.access_token }) });
+    const json = await resp.json();
+    if(!resp.ok) throw new Error(json.error || 'Error desconocido');
+    status.style.color='var(--ok)'; status.textContent = `Invitación enviada a ${email}.`;
+    document.getElementById('admin-invite-email').value = '';
+    await renderAdminTabla();
+  }catch(err){
+    status.style.color='var(--bad)'; status.textContent = 'Error: '+err.message;
+  }
+};
+
+async function renderAdminTabla(){
+  const cont = document.getElementById('admin-tabla');
+  const { data, error } = await sb.from('perfiles').select('*').order('email');
+  if(error){ cont.innerHTML = `<div class="note" style="color:var(--bad);">${error.message}</div>`; return; }
+  cont.innerHTML = `<table><thead><tr><th>Email</th><th>Rol</th><th>Activo</th>
+    ${TAB_PERMISOS.map(k=>`<th>${k}</th>`).join('')}<th></th></tr></thead><tbody>
+    ${data.map(p=>`<tr data-id="${p.user_id}">
+      <td>${p.email}</td>
+      <td><select class="f-rol"><option value="pendiente" ${p.rol==='pendiente'?'selected':''}>pendiente</option>
+        <option value="usuario" ${p.rol==='usuario'?'selected':''}>usuario</option>
+        <option value="admin" ${p.rol==='admin'?'selected':''}>admin</option></select></td>
+      <td><input type="checkbox" class="f-activo" ${p.activo?'checked':''} /></td>
+      ${TAB_PERMISOS.map(k=>`<td><input type="checkbox" class="f-perm" data-key="${k}" ${p.permisos?.[k]!==false?'checked':''} /></td>`).join('')}
+      <td><button class="small f-guardar">Guardar</button></td>
+    </tr>`).join('')}
+  </tbody></table>`;
+  cont.querySelectorAll('tr[data-id]').forEach(tr=>{
+    tr.querySelector('.f-guardar').onclick = async ()=>{
+      const id = tr.dataset.id;
+      const rol = tr.querySelector('.f-rol').value;
+      const activo = tr.querySelector('.f-activo').checked;
+      const permisos = {};
+      tr.querySelectorAll('.f-perm').forEach(chk=>{ permisos[chk.dataset.key] = chk.checked; });
+      const { error } = await sb.from('perfiles').update({ rol, activo, permisos }).eq('user_id', id);
+      if(error) alert('Error al guardar: '+error.message);
+    };
+  });
+}
+document.getElementById('btn-admin-refresh').onclick = renderAdminTabla;
 
 (async ()=>{
   const { data: { session } } = await sb.auth.getSession();
